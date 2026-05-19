@@ -35,9 +35,5 @@ if uploaded_file is not None:
 
     # classification
     classification_df = classify_items(df)
-
-st.write('Trend Classification')
-
-st.dataframe(classification_df)
-    st.write('Processed Dataset')
-    st.dataframe(df.head())
+    st.write('Trend Classification')
+    st.dataframe(classification_df)
