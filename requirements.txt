@@ -8,7 +8,6 @@ lightgbm==4.3.0
 catboost==1.2.5
 prophet==1.1.5
 tensorflow==2.16.1
-keras==3.3.3
 openpyxl==3.1.2
 plotly==5.22.0
 sqlalchemy==2.0.30
