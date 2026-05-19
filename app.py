@@ -294,10 +294,6 @@ if uploaded_file is not None:
                 f'{mape:.2f}%'
             )
 
-        st.subheader('Forecast Per Month')
-
-        st.dataframe(monthly_summary)
-
         st.subheader('Forecast Per Year')
 
         st.dataframe(yearly_summary)
