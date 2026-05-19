@@ -27,3 +27,7 @@ if uploaded_file is not None:
     st.success('Dataset uploaded successfully')
 
     st.dataframe(df.head())
+
+from utils.preprocessing import preprocess_data
+
+df = preprocess_data(df)
