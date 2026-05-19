@@ -48,7 +48,7 @@ selected_model = st.selectbox(
     classification_df['Model']
 )
 
-# pick category
+# pick model
 selected_row = classification_df[
     classification_df['Model'] == selected_model
 ].iloc[0]
@@ -64,3 +64,9 @@ st.write(f'''
 Recommended Models:
 {", ".join(RECOMMENDED_MODELS[category])}
 ''')
+
+# choose method
+selected_method = st.selectbox(
+    'Choose Forecasting Method',
+    RECOMMENDED_MODELS[category]
+)
