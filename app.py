@@ -100,7 +100,10 @@ if st.button('Run Forecast'):
     # =========================
 
     st.subheader('Forecast Result')
-
+    forecast_df['Forecast Date'] = (
+    forecast_df['Forecast Date']
+    .dt.strftime('%m-%Y')
+    )
     st.dataframe(forecast_df)
 
 
