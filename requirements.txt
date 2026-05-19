@@ -12,3 +12,8 @@ sqlalchemy
 pymysql
 joblib
 prophet
+tensorflow
+keras
+scikeras
+cmdstanpy
+pystan
