@@ -1,26 +1,21 @@
 import numpy as np
 import pandas as pd
 
-from prophet import Prophet
-
 from sklearn.ensemble import (
     RandomForestRegressor,
     ExtraTreesRegressor,
-    GradientBoostingRegressor,
-    AdaBoostRegressor
+    GradientBoostingRegressor
 )
 
-from sklearn.neighbors import KNeighborsRegressor
-
-from sklearn.svm import SVR
-
-from sklearn.neural_network import MLPRegressor
+from sklearn.linear_model import ElasticNet
 
 from xgboost import XGBRegressor
 
 from lightgbm import LGBMRegressor
 
 from catboost import CatBoostRegressor
+
+from prophet import Prophet
 
 from sklearn.preprocessing import MinMaxScaler
 
@@ -35,8 +30,6 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.callbacks import EarlyStopping
 
 
-# FEATURE ENGINEERING
-
 def create_features(df):
 
     df = df.copy()
@@ -44,8 +37,6 @@ def create_features(df):
     df['month'] = df['ds'].dt.month
 
     df['year'] = df['ds'].dt.year
-
-    df['quarter'] = df['ds'].dt.quarter
 
     df['lag_1'] = df['y'].shift(1)
 
@@ -59,264 +50,53 @@ def create_features(df):
         .mean()
     )
 
-    df['rolling_std_3'] = (
-        df['y']
-        .rolling(3)
-        .std()
-    )
-
     df = df.dropna()
 
     return df
 
 
-# PREPARE ML DATA
+def get_model(method):
 
-def prepare_ml_data(df):
+    if method == 'XGBoost':
 
-    df_feat = create_features(df)
+        model = XGBRegressor()
 
-    feature_cols = [
-        'month',
-        'year',
-        'quarter',
-        'lag_1',
-        'lag_2',
-        'lag_3',
-        'rolling_mean_3',
-        'rolling_std_3'
-    ]
+    elif method == 'LightGBM':
 
-    X = df_feat[feature_cols]
+        model = LGBMRegressor()
 
-    y = df_feat['y']
+    elif method == 'Random Forest':
 
-    return X, y, df_feat
+        model = RandomForestRegressor()
 
+    elif method == 'CatBoost':
 
-# FUTURE FEATURE GENERATION
+        model = CatBoostRegressor(
+            verbose=0
+        )
 
-def generate_future_features(df, periods=12):
+    elif method == 'Extra Trees':
 
-    temp_df = df.copy()
+        model = ExtraTreesRegressor()
 
-    predictions = []
+    elif method == 'Gradient Boosting':
 
-    future_dates = pd.date_range(
-        start=temp_df['ds'].max() + pd.DateOffset(months=1),
-        periods=periods,
-        freq='MS'
-    )
+        model = GradientBoostingRegressor()
 
-    return future_dates
+    elif method == 'ElasticNet':
 
+        model = ElasticNet()
 
-# RANDOM FOREST
+    else:
 
-def random_forest_forecast(train_df, periods=12):
+        model = RandomForestRegressor()
 
-    X, y, df_feat = prepare_ml_data(train_df)
+    return model
 
-    model = RandomForestRegressor(
-        n_estimators=300,
-        random_state=42
-    )
 
-    model.fit(X, y)
+def prophet_forecast(item_df, periods=36):
 
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# EXTRA TREES
-
-def extra_trees_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = ExtraTreesRegressor(
-        n_estimators=300,
-        random_state=42
-    )
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# GRADIENT BOOSTING
-
-def gradient_boosting_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = GradientBoostingRegressor(
-        n_estimators=300,
-        random_state=42
-    )
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# ADABOOST
-
-def adaboost_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = AdaBoostRegressor(
-        n_estimators=300,
-        random_state=42
-    )
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# XGBOOST
-
-def xgboost_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = XGBRegressor(
-        n_estimators=300,
-        learning_rate=0.05,
-        max_depth=5,
-        random_state=42
-    )
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# LIGHTGBM
-
-def lightgbm_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = LGBMRegressor(
-        n_estimators=300,
-        learning_rate=0.05,
-        random_state=42
-    )
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# CATBOOST
-
-def catboost_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = CatBoostRegressor(
-        iterations=300,
-        learning_rate=0.05,
-        verbose=0
-    )
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# KNN
-
-def knn_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = KNeighborsRegressor(
-        n_neighbors=5
-    )
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# SVR
-
-def svr_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = SVR()
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# MLP
-
-def mlp_forecast(train_df, periods=12):
-
-    X, y, df_feat = prepare_ml_data(train_df)
-
-    model = MLPRegressor(
-        hidden_layer_sizes=(128, 64),
-        max_iter=1000,
-        random_state=42
-    )
-
-    model.fit(X, y)
-
-    return recursive_forecast(
-        model,
-        train_df,
-        periods
-    )
-
-
-# PROPHET
-
-def prophet_forecast(train_df, periods=12):
-
-    prophet_df = train_df[['ds', 'y']].copy()
+    prophet_df = item_df[['ds', 'y']].copy()
 
     model = Prophet(
         yearly_seasonality=True,
@@ -333,14 +113,24 @@ def prophet_forecast(train_df, periods=12):
 
     forecast = model.predict(future)
 
-    pred = forecast.tail(periods)['yhat'].values
+    result = forecast.tail(periods)[[
+        'ds',
+        'yhat'
+    ]]
 
-    pred = np.clip(pred, 0, None)
+    result.columns = [
+        'Forecast Date',
+        'Forecast'
+    ]
 
-    return pred
+    result['Forecast'] = np.clip(
+        result['Forecast'],
+        0,
+        None
+    )
 
+    return result
 
-# BILSTM
 
 def create_sequence(data, seq_length):
 
@@ -357,15 +147,19 @@ def create_sequence(data, seq_length):
     return np.array(X), np.array(y)
 
 
-def bilstm_forecast(train_df, periods=12):
+def bilstm_forecast(item_df, periods=36):
 
-    values = train_df['y'].values.reshape(-1, 1)
+    values = item_df['y'].values.reshape(-1, 1)
 
     scaler = MinMaxScaler()
 
     scaled = scaler.fit_transform(values)
 
     seq_length = 12
+
+    if len(scaled) <= seq_length:
+
+        return pd.DataFrame()
 
     X, y = create_sequence(
         scaled,
@@ -406,32 +200,32 @@ def bilstm_forecast(train_df, periods=12):
     model.fit(
         X,
         y,
-        epochs=100,
+        epochs=50,
         batch_size=8,
         verbose=0,
         callbacks=[early_stop]
     )
 
-    forecast_input = scaled[-seq_length:]
+    current_batch = scaled[-seq_length:]
 
     predictions = []
 
-    current_batch = forecast_input.reshape(
+    current_batch = current_batch.reshape(
         (1, seq_length, 1)
     )
 
-    for _ in range(periods):
+    for i in range(periods):
 
-        current_pred = model.predict(
+        pred = model.predict(
             current_batch,
             verbose=0
         )[0]
 
-        predictions.append(current_pred)
+        predictions.append(pred)
 
         current_batch = np.append(
             current_batch[:, 1:, :],
-            [[current_pred]],
+            [[pred]],
             axis=1
         )
 
@@ -447,53 +241,127 @@ def bilstm_forecast(train_df, periods=12):
         None
     )
 
-    return predictions
+    future_dates = pd.date_range(
+        start=item_df['ds'].max()
+        + pd.DateOffset(months=1),
+        periods=periods,
+        freq='MS'
+    )
+
+    forecast_df = pd.DataFrame({
+
+        'Forecast Date': future_dates,
+
+        'Forecast': predictions
+
+    })
+
+    return forecast_df
 
 
-# RECURSIVE FORECAST
+def forecast_item(item_df, method, periods=36):
 
-def recursive_forecast(model, train_df, periods=12):
+    if method == 'Prophet':
 
-    temp_df = train_df.copy()
+        return prophet_forecast(
+            item_df,
+            periods
+        )
 
-    predictions = []
+    if method == 'BiLSTM':
 
-    for _ in range(periods):
+        return bilstm_forecast(
+            item_df,
+            periods
+        )
 
-        feat_df = create_features(temp_df)
+    item_df = create_features(item_df)
 
-        latest = feat_df.iloc[-1:]
+    features = [
+        'month',
+        'year',
+        'lag_1',
+        'lag_2',
+        'lag_3',
+        'rolling_mean_3'
+    ]
 
-        X_latest = latest[[
-            'month',
-            'year',
-            'quarter',
-            'lag_1',
-            'lag_2',
-            'lag_3',
-            'rolling_mean_3',
-            'rolling_std_3'
-        ]]
+    X = item_df[features]
 
-        pred = model.predict(X_latest)[0]
+    y = item_df['y']
+
+    model = get_model(method)
+
+    model.fit(X, y)
+
+    future_predictions = []
+
+    temp_df = item_df.copy()
+
+    last_date = temp_df['ds'].max()
+
+    for i in range(periods):
+
+        future_date = (
+            last_date +
+            pd.DateOffset(months=i+1)
+        )
+
+        lag_1 = temp_df['y'].iloc[-1]
+
+        lag_2 = temp_df['y'].iloc[-2]
+
+        lag_3 = temp_df['y'].iloc[-3]
+
+        rolling_mean_3 = (
+            temp_df['y']
+            .tail(3)
+            .mean()
+        )
+
+        future_X = pd.DataFrame({
+
+            'month': [future_date.month],
+
+            'year': [future_date.year],
+
+            'lag_1': [lag_1],
+
+            'lag_2': [lag_2],
+
+            'lag_3': [lag_3],
+
+            'rolling_mean_3': [rolling_mean_3]
+
+        })
+
+        pred = model.predict(future_X)[0]
 
         pred = max(pred, 0)
 
-        predictions.append(pred)
+        future_predictions.append({
 
-        next_date = (
-            temp_df['ds'].max()
-            + pd.DateOffset(months=1)
-        )
+            'Forecast Date': future_date,
 
-        new_row = pd.DataFrame({
-            'ds': [next_date],
-            'y': [pred]
+            'Forecast': pred
+
         })
 
-        temp_df = pd.concat(
-            [temp_df, new_row],
-            ignore_index=True
-        )
+        new_row = pd.DataFrame({
 
-    return np.array(predictions)
+            'ds': [future_date],
+
+            'y': [pred]
+
+        })
+
+        temp_df = pd.concat([
+            temp_df,
+            new_row
+        ])
+
+    forecast_df = pd.DataFrame(
+        future_predictions
+    )
+
+    return forecast_df
