@@ -245,39 +245,39 @@ if uploaded_file is not None:
             .round(0)
             .astype(int)
         )
-
-       st.subheader('Forecast Summary')
+               
+    st.subheader('Forecast Summary')
 
         col1, col2 = st.columns(2)
-        
+
         with col1:
-        
+
             st.metric(
                 'Average Forecast',
                 f'{avg_forecast:,.0f}'
             )
-        
+
             st.metric(
                 'Highest Forecast',
                 f'{max_forecast:,.0f}'
             )
-        
+
         with col2:
-        
+
             st.metric(
                 'Lowest Forecast',
                 f'{min_forecast:,.0f}'
             )
-        
+
             st.metric(
                 'MAPE',
                 f'{mape:.2f}%'
             )
-        
+
         st.subheader('Forecast Per Year')
-        
+
         st.dataframe(yearly_summary)
-        
+
         st.metric(
             'Total Forecast',
             f'{total_forecast:,.0f}'
