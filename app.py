@@ -13,7 +13,7 @@ st.set_page_config(
     layout='wide'
 )
 
-st.title('Sales Forecasting System')
+st.title('Sales Forecasting')
 
 uploaded_file = st.file_uploader(
     'Upload Excel/CSV File',
