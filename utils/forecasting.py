@@ -363,8 +363,8 @@ def forecast_item(item_df, method, periods=36):
         future_predictions
     )
 
-    forecast_df['Forecast Date'] = pd.to_datatime(
-        forecast_daf['Forecast Date']
+    forecast_df['Forecast Date'] = pd.to_datetime(
+        forecast_df['Forecast Date']
     )
 
     return forecast_df
