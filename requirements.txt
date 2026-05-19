@@ -7,8 +7,6 @@ scikit-learn
 xgboost
 lightgbm
 catboost
-tensorflow
-torch
 openpyxl
 sqlalchemy
 pymysql
