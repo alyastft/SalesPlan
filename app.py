@@ -29,47 +29,36 @@ if uploaded_file is not None:
     st.write("Processed Data")
     st.dataframe(df.head())
 
+    classification_df = classify_items(df)
+
+    st.write('Trend Classification')
+    st.dataframe(classification_df)
+
+    selected_model = st.selectbox(
+        'Choose Item',
+        classification_df['Model']
+    )
+
+    selected_row = classification_df[
+        classification_df['Model'] == selected_model
+    ].iloc[0]
+
+    category = selected_row['Category']
+
+    st.subheader('Trend Analysis')
+
+    st.write(f'Category: {category}')
+
+    st.write(f'''
+    Recommended Models:
+    {", ".join(RECOMMENDED_MODELS[category])}
+    ''')
+
+    selected_method = st.selectbox(
+        'Choose Forecasting Method',
+        RECOMMENDED_MODELS[category]
+    )
+
 else:
 
     st.info("Please upload file first")
-
-    # preprocessing
-    df = preprocess_data(df)
-
-    st.write('Processed Dataset')
-    st.dataframe(df.head())
-
-classification_df = classify_items(df)
-
-st.write('Trend Classification')
-
-st.dataframe(classification_df)
-
-# dropdown item
-selected_model = st.selectbox(
-    'Choose Item',
-    classification_df['Model']
-)
-
-# pick model
-selected_row = classification_df[
-    classification_df['Model'] == selected_model
-].iloc[0]
-
-category = selected_row['Category']
-
-# insight
-st.subheader('Trend Analysis')
-
-st.write(f'Category: {category}')
-
-st.write(f'''
-Recommended Models:
-{", ".join(RECOMMENDED_MODELS[category])}
-''')
-
-# choose method
-selected_method = st.selectbox(
-    'Choose Forecasting Method',
-    RECOMMENDED_MODELS[category]
-)
