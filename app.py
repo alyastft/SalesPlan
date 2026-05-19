@@ -127,49 +127,29 @@ if uploaded_file is not None:
         fig = go.Figure()
 
         fig.add_trace(
-
             go.Scatter(
-
                 x=item_df['ds'],
-
                 y=item_df['y'],
-
                 mode='lines+markers',
-
                 name='Actual'
-
             )
-
         )
 
         fig.add_trace(
-
             go.Scatter(
-
                 x=forecast_df['Forecast Date'],
-
                 y=forecast_df['Forecast'],
-
                 mode='lines+markers',
-
                 name='Forecast'
-
             )
-
         )
 
         fig.update_layout(
-
             title=f'{selected_model} Forecast',
-
             xaxis_title='Date',
-
             yaxis_title='Sales',
-
             hovermode='x unified',
-
             height=600
-
         )
 
         st.plotly_chart(
@@ -245,8 +225,8 @@ if uploaded_file is not None:
             .round(0)
             .astype(int)
         )
-               
-    st.subheader('Forecast Summary')
+
+        st.subheader('Forecast Summary')
 
         col1, col2 = st.columns(2)
 
