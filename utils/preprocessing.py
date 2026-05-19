@@ -12,11 +12,11 @@ def preprocess_data(df):
     df['Date'] = df['Date'].astype(str)
 
     for indo, eng in month_mapping.items():
-
         df['Date'] = df['Date'].str.replace(indo, eng)
 
     df['Date'] = pd.to_datetime(
-        df['Date']
+        df['Date'],
+        format='mixed'
     )
 
     df = df.rename(columns={
