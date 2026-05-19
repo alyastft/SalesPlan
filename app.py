@@ -36,3 +36,10 @@ if uploaded_file is not None:
     ax.set_title(selected_model)
 
     st.pyplot(fig)
+
+    # CLASSIFICATION OTOMATIS
+    st.write(f"Category: {category}")
+    st.write(f"CV: {cv}")
+    st.write(f"Trend: {trend}")
+
+
