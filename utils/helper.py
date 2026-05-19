@@ -1,42 +1,42 @@
 RECOMMENDED_MODELS = {
 
     'Stable': [
-        'XGBoost',
-        'LightGBM',
+        'Prophet',
         'Random Forest',
-        'CatBoost',
-        'Extra Trees'
+        'LightGBM',
+        'XGBoost',
+        'MLP'
     ],
 
     'Declining': [
-        'XGBoost',
-        'LightGBM',
-        'ElasticNet',
-        'Random Forest',
-        'Gradient Boosting'
+        'CatBoost',
+        'Gradient Boosting',
+        'Extra Trees',
+        'SVR',
+        'XGBoost'
     ],
 
     'Volatile': [
-        'LSTM',
-        'GRU',
-        'TCN',
-        'N-BEATS',
-        'Temporal Fusion Transformer'
+        'BiLSTM',
+        'MLP',
+        'Random Forest',
+        'XGBoost',
+        'CatBoost'
     ],
 
     'Intermittent': [
-        'CatBoost',
         'LightGBM',
+        'Extra Trees',
         'Random Forest',
-        'DeepAR',
-        'XGBoost'
+        'XGBoost',
+        'BiLSTM'
     ],
 
     'Discontinued': [
         'Random Forest',
-        'XGBoost',
-        'CatBoost',
-        'LightGBM',
-        'MLP Regressor'
+        'Gradient Boosting',
+        'SVR',
+        'MLP',
+        'CatBoost'
     ]
 }
