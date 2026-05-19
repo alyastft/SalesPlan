@@ -91,120 +91,215 @@ if uploaded_file is not None:
 
             st.stop()
 
-        st.success('Forecast Completed')
+            st.success('Forecast Completed')
 
-        display_df = forecast_df.copy()
+    forecast_df['Forecast Date'] = pd.to_datetime(
+        forecast_df['Forecast Date']
+    )
 
-        display_df['Forecast Date'] = (
-            pd.to_datetime(
-                display_df['Forecast Date']
-            )
-            .dt.strftime('%m-%Y')
-        )
+    forecast_df['Forecast Month'] = (
+        forecast_df['Forecast Date']
+        .dt.strftime('%m-%Y')
+    )
 
-        st.subheader('Forecast Result')
-        st.dataframe(display_df)
+    forecast_df['Year'] = (
+        forecast_df['Forecast Date']
+        .dt.year
+    )
 
-        fig = go.Figure()
+    st.subheader('Forecast Result')
 
-        fig.add_trace(
+    display_df = forecast_df.copy()
 
-            go.Scatter(
+    display_df['Forecast'] = (
+        display_df['Forecast']
+        .round(0)
+        .astype(int)
+    )
 
-                x=item_df['ds'],
+    st.dataframe(
+        display_df[
+            ['Forecast Month', 'Forecast']
+        ]
+    )
 
-                y=item_df['y'],
+    fig = go.Figure()
 
-                mode='lines+markers',
+    fig.add_trace(
 
-                name='Actual'
+        go.Scatter(
 
-            )
+            x=item_df['ds'],
 
-        )
+            y=item_df['y'],
 
-        fig.add_trace(
+            mode='lines+markers',
 
-            go.Scatter(
-
-                x=forecast_df['Forecast Date'],
-
-                y=forecast_df['Forecast'],
-
-                mode='lines+markers',
-
-                name='Forecast'
-
-            )
-
-        )
-
-        fig.update_layout(
-
-            title=f'{selected_model} Forecast',
-
-            xaxis_title='Date',
-
-            yaxis_title='Sales',
-
-            hovermode='x unified',
-
-            height=600
+            name='Actual'
 
         )
 
-        st.plotly_chart(
-            fig,
-            use_container_width=True
+    )
+
+    fig.add_trace(
+
+        go.Scatter(
+
+            x=forecast_df['Forecast Date'],
+
+            y=forecast_df['Forecast'],
+
+            mode='lines+markers',
+
+            name='Forecast'
+
         )
 
-        st.subheader('Forecast Summary')
+    )
 
-        total_forecast = (
-            forecast_df['Forecast']
-            .sum()
+    fig.update_layout(
+
+        title=f'{selected_model} Forecast',
+
+        xaxis_title='Date',
+
+        yaxis_title='Sales',
+
+        hovermode='x unified',
+
+        height=600
+
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+    actual = item_df['y'].tail(
+        min(12, len(item_df))
+    ).values
+
+    pred = forecast_df['Forecast'].head(
+        len(actual)
+    ).values
+
+    if len(actual) == len(pred):
+
+        actual = np.array(actual)
+
+        pred = np.array(pred)
+
+        mask = actual != 0
+
+        actual = actual[mask]
+
+        pred = pred[mask]
+
+        if len(actual) > 0:
+
+            mape = np.mean(
+                np.abs(
+                    (actual - pred) / actual
+                )
+            ) * 100
+
+        else:
+
+            mape = 0
+
+    else:
+
+        mape = 0
+
+    total_forecast = (
+        forecast_df['Forecast']
+        .sum()
+    )
+
+    avg_forecast = (
+        forecast_df['Forecast']
+        .mean()
+    )
+
+    max_forecast = (
+        forecast_df['Forecast']
+        .max()
+    )
+
+    min_forecast = (
+        forecast_df['Forecast']
+        .min()
+    )
+
+    monthly_summary = (
+        forecast_df[
+            ['Forecast Month', 'Forecast']
+        ]
+        .copy()
+    )
+
+    monthly_summary['Forecast'] = (
+        monthly_summary['Forecast']
+        .round(0)
+        .astype(int)
+    )
+
+    yearly_summary = (
+        forecast_df
+        .groupby('Year')['Forecast']
+        .sum()
+        .reset_index()
+    )
+
+    yearly_summary['Forecast'] = (
+        yearly_summary['Forecast']
+        .round(0)
+        .astype(int)
+    )
+
+    st.subheader('Forecast Summary')
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        st.metric(
+            'Total Forecast',
+            f'{total_forecast:,.0f}'
         )
 
-        avg_forecast = (
-            forecast_df['Forecast']
-            .mean()
+        st.metric(
+            'Average Forecast',
+            f'{avg_forecast:,.0f}'
         )
 
-        max_forecast = (
-            forecast_df['Forecast']
-            .max()
+    with col2:
+
+        st.metric(
+            'Highest Forecast',
+            f'{max_forecast:,.0f}'
         )
 
-        min_forecast = (
-            forecast_df['Forecast']
-            .min()
+        st.metric(
+            'Lowest Forecast',
+            f'{min_forecast:,.0f}'
         )
 
-        col1, col2 = st.columns(2)
+    with col3:
 
-        with col1:
+        st.metric(
+            'MAPE',
+            f'{mape:.2f}%'
+        )
 
-            st.metric(
-                'Total Forecast',
-                f'{total_forecast:,.0f}'
-            )
+    st.subheader('Forecast Per Month')
 
-            st.metric(
-                'Average Forecast',
-                f'{avg_forecast:,.0f}'
-            )
+    st.dataframe(monthly_summary)
 
-        with col2:
+    st.subheader('Forecast Per Year')
 
-            st.metric(
-                'Highest Forecast',
-                f'{max_forecast:,.0f}'
-            )
-
-            st.metric(
-                'Lowest Forecast',
-                f'{min_forecast:,.0f}'
-            )
+    st.dataframe(yearly_summary)
 
 else:
 
