@@ -215,3 +215,8 @@ if st.button('Run Forecast'):
             f'{min_forecast:,.0f}'
         )
 
+if forecast_df.empty:
+
+    st.warning('Data tidak cukup untuk forecasting')
+
+    st.stop()
