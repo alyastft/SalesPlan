@@ -50,10 +50,11 @@ def create_features(df):
         .mean()
     )
 
+    df = df.replace([np.inf, -np.inf], np.nan)
+
     df = df.dropna()
 
     return df
-
 
 def get_model(method):
 
@@ -260,6 +261,11 @@ def bilstm_forecast(item_df, periods=36):
 
 
 def forecast_item(item_df, method, periods=36):
+    item_df = create_features(item_df)
+
+    if item_df.empty or len(item_df) < 5:
+
+    return pd.DataFrame()
 
     if method == 'Prophet':
 
