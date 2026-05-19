@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from utils.preprocessing import preprocess_data
+from utils.classification import classify_items
 
 st.set_page_config(
     page_title='Forecasting System',
@@ -31,5 +32,12 @@ if uploaded_file is not None:
     # preprocessing
     df = preprocess_data(df)
 
+
+    # classification
+    classification_df = classify_items(df)
+
+st.write('Trend Classification')
+
+st.dataframe(classification_df)
     st.write('Processed Dataset')
     st.dataframe(df.head())
