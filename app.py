@@ -26,12 +26,12 @@ if uploaded_file is not None:
 
     df = preprocess_data(df)
 
-    st.write("Processed Data")
+    st.write("Processed Dataset")
     st.dataframe(df.head())
 
     classification_df = classify_items(df)
 
-    st.write('Trend Classification')
+    st.write("Trend Classification")
     st.dataframe(classification_df)
 
     selected_model = st.selectbox(
