@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 
 from utils.preprocessing import preprocess_data
@@ -29,12 +30,12 @@ if uploaded_file is not None:
 
         df = pd.read_csv(uploaded_file)
 
-    st.write('Raw Dataset')
+    st.subheader('Raw Dataset')
     st.dataframe(df.head())
 
     df = preprocess_data(df)
 
-    st.write('Processed Dataset')
+    st.subheader('Processed Dataset')
     st.dataframe(df.head())
 
     classification_df = classify_items(df)
@@ -91,215 +92,215 @@ if uploaded_file is not None:
 
             st.stop()
 
-            st.success('Forecast Completed')
+        st.success('Forecast Completed')
 
-    forecast_df['Forecast Date'] = pd.to_datetime(
-        forecast_df['Forecast Date']
-    )
+        forecast_df['Forecast Date'] = pd.to_datetime(
+            forecast_df['Forecast Date']
+        )
 
-    forecast_df['Forecast Month'] = (
-        forecast_df['Forecast Date']
-        .dt.strftime('%m-%Y')
-    )
+        forecast_df['Forecast Month'] = (
+            forecast_df['Forecast Date']
+            .dt.strftime('%m-%Y')
+        )
 
-    forecast_df['Year'] = (
-        forecast_df['Forecast Date']
-        .dt.year
-    )
+        forecast_df['Year'] = (
+            forecast_df['Forecast Date']
+            .dt.year
+        )
 
-    st.subheader('Forecast Result')
+        st.subheader('Forecast Result')
 
-    display_df = forecast_df.copy()
+        display_df = forecast_df.copy()
 
-    display_df['Forecast'] = (
-        display_df['Forecast']
-        .round(0)
-        .astype(int)
-    )
+        display_df['Forecast'] = (
+            display_df['Forecast']
+            .round(0)
+            .astype(int)
+        )
 
-    st.dataframe(
-        display_df[
-            ['Forecast Month', 'Forecast']
-        ]
-    )
+        st.dataframe(
+            display_df[
+                ['Forecast Month', 'Forecast']
+            ]
+        )
 
-    fig = go.Figure()
+        fig = go.Figure()
 
-    fig.add_trace(
+        fig.add_trace(
 
-        go.Scatter(
+            go.Scatter(
 
-            x=item_df['ds'],
+                x=item_df['ds'],
 
-            y=item_df['y'],
+                y=item_df['y'],
 
-            mode='lines+markers',
+                mode='lines+markers',
 
-            name='Actual'
+                name='Actual'
+
+            )
 
         )
 
-    )
+        fig.add_trace(
 
-    fig.add_trace(
+            go.Scatter(
 
-        go.Scatter(
+                x=forecast_df['Forecast Date'],
 
-            x=forecast_df['Forecast Date'],
+                y=forecast_df['Forecast'],
 
-            y=forecast_df['Forecast'],
+                mode='lines+markers',
 
-            mode='lines+markers',
+                name='Forecast'
 
-            name='Forecast'
+            )
 
         )
 
-    )
+        fig.update_layout(
 
-    fig.update_layout(
+            title=f'{selected_model} Forecast',
 
-        title=f'{selected_model} Forecast',
+            xaxis_title='Date',
 
-        xaxis_title='Date',
+            yaxis_title='Sales',
 
-        yaxis_title='Sales',
+            hovermode='x unified',
 
-        hovermode='x unified',
+            height=600
 
-        height=600
+        )
 
-    )
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
+        actual = item_df['y'].tail(
+            min(12, len(item_df))
+        ).values
 
-    actual = item_df['y'].tail(
-        min(12, len(item_df))
-    ).values
+        pred = forecast_df['Forecast'].head(
+            len(actual)
+        ).values
 
-    pred = forecast_df['Forecast'].head(
-        len(actual)
-    ).values
+        if len(actual) == len(pred):
 
-    if len(actual) == len(pred):
+            actual = np.array(actual)
 
-        actual = np.array(actual)
+            pred = np.array(pred)
 
-        pred = np.array(pred)
+            mask = actual != 0
 
-        mask = actual != 0
+            actual = actual[mask]
 
-        actual = actual[mask]
+            pred = pred[mask]
 
-        pred = pred[mask]
+            if len(actual) > 0:
 
-        if len(actual) > 0:
+                mape = np.mean(
+                    np.abs(
+                        (actual - pred) / actual
+                    )
+                ) * 100
 
-            mape = np.mean(
-                np.abs(
-                    (actual - pred) / actual
-                )
-            ) * 100
+            else:
+
+                mape = 0
 
         else:
 
             mape = 0
 
-    else:
-
-        mape = 0
-
-    total_forecast = (
-        forecast_df['Forecast']
-        .sum()
-    )
-
-    avg_forecast = (
-        forecast_df['Forecast']
-        .mean()
-    )
-
-    max_forecast = (
-        forecast_df['Forecast']
-        .max()
-    )
-
-    min_forecast = (
-        forecast_df['Forecast']
-        .min()
-    )
-
-    monthly_summary = (
-        forecast_df[
-            ['Forecast Month', 'Forecast']
-        ]
-        .copy()
-    )
-
-    monthly_summary['Forecast'] = (
-        monthly_summary['Forecast']
-        .round(0)
-        .astype(int)
-    )
-
-    yearly_summary = (
-        forecast_df
-        .groupby('Year')['Forecast']
-        .sum()
-        .reset_index()
-    )
-
-    yearly_summary['Forecast'] = (
-        yearly_summary['Forecast']
-        .round(0)
-        .astype(int)
-    )
-
-    st.subheader('Forecast Summary')
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        st.metric(
-            'Total Forecast',
-            f'{total_forecast:,.0f}'
+        total_forecast = (
+            forecast_df['Forecast']
+            .sum()
         )
 
-        st.metric(
-            'Average Forecast',
-            f'{avg_forecast:,.0f}'
+        avg_forecast = (
+            forecast_df['Forecast']
+            .mean()
         )
 
-    with col2:
-
-        st.metric(
-            'Highest Forecast',
-            f'{max_forecast:,.0f}'
+        max_forecast = (
+            forecast_df['Forecast']
+            .max()
         )
 
-        st.metric(
-            'Lowest Forecast',
-            f'{min_forecast:,.0f}'
+        min_forecast = (
+            forecast_df['Forecast']
+            .min()
         )
 
-    with col3:
-
-        st.metric(
-            'MAPE',
-            f'{mape:.2f}%'
+        monthly_summary = (
+            forecast_df[
+                ['Forecast Month', 'Forecast']
+            ]
+            .copy()
         )
 
-    st.subheader('Forecast Per Month')
+        monthly_summary['Forecast'] = (
+            monthly_summary['Forecast']
+            .round(0)
+            .astype(int)
+        )
 
-    st.dataframe(monthly_summary)
+        yearly_summary = (
+            forecast_df
+            .groupby('Year')['Forecast']
+            .sum()
+            .reset_index()
+        )
 
-    st.subheader('Forecast Per Year')
+        yearly_summary['Forecast'] = (
+            yearly_summary['Forecast']
+            .round(0)
+            .astype(int)
+        )
 
-    st.dataframe(yearly_summary)
+        st.subheader('Forecast Summary')
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            st.metric(
+                'Total Forecast',
+                f'{total_forecast:,.0f}'
+            )
+
+            st.metric(
+                'Average Forecast',
+                f'{avg_forecast:,.0f}'
+            )
+
+        with col2:
+
+            st.metric(
+                'Highest Forecast',
+                f'{max_forecast:,.0f}'
+            )
+
+            st.metric(
+                'Lowest Forecast',
+                f'{min_forecast:,.0f}'
+            )
+
+        with col3:
+
+            st.metric(
+                'MAPE',
+                f'{mape:.2f}%'
+            )
+
+        st.subheader('Forecast Per Month')
+
+        st.dataframe(monthly_summary)
+
+        st.subheader('Forecast Per Year')
+
+        st.dataframe(yearly_summary)
 
 else:
 
