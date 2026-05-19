@@ -303,8 +303,7 @@ def forecast_item(item_df, method, periods=36):
     for i in range(periods):
 
         future_date = (
-            last_date +
-            pd.DateOffset(months=i+1)
+            pd.to_datetime(last_date) + pd.DateOffset(months=i+1)
         )
 
         lag_1 = temp_df['y'].iloc[-1]
@@ -362,6 +361,10 @@ def forecast_item(item_df, method, periods=36):
 
     forecast_df = pd.DataFrame(
         future_predictions
+    )
+
+    forecast_df['Forecast Date'] = pd.to_datatime(
+        forecast_daf['Forecast Date']
     )
 
     return forecast_df
