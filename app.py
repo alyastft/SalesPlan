@@ -61,3 +61,9 @@ if uploaded_file is not None:
     Recommended Models:
     {", ".join(RECOMMENDED_MODELS[category])}
     ''')
+
+    # User Pick Model
+    selected_method = st.selectbox(
+        'Choose Forecasting Method',
+        RECOMMENDED_MODELS[category]
+    )
