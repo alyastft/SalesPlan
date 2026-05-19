@@ -10,25 +10,28 @@ st.set_page_config(
     layout='wide'
 )
 
-st.title('Sales Forecasting System')
+st.title("Sales Forecasting")
 
 uploaded_file = st.file_uploader(
-    'Upload Excel/CSV File',
-    type=['xlsx', 'csv']
+    "Upload Excel File",
+    type=["xlsx"]
 )
 
 if uploaded_file is not None:
 
-    if uploaded_file.name.endswith('.xlsx'):
+    df = pd.read_excel(uploaded_file)
 
-        df = pd.read_excel(uploaded_file)
-
-    else:
-
-        df = pd.read_csv(uploaded_file)
-
-    st.write('Raw Dataset')
+    st.write("Raw Data")
     st.dataframe(df.head())
+
+    df = preprocess_data(df)
+
+    st.write("Processed Data")
+    st.dataframe(df.head())
+
+else:
+
+    st.info("Please upload file first")
 
     # preprocessing
     df = preprocess_data(df)
