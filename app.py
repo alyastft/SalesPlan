@@ -15,6 +15,18 @@ st.set_page_config(
 
 st.title('Sales Forecasting')
 
+with open(
+    'assets/template.xlsx',
+    'rb'
+) as file:
+
+    st.download_button(
+        label='Download Template Excel',
+        data=file,
+        file_name='template.xlsx',
+        mime='application/vnd.openxmlformats-officedocumen.spreadsheetml.sheet'
+    )
+
 uploaded_file = st.file_uploader(
     'Upload Excel/CSV File',
     type=['xlsx', 'csv']
