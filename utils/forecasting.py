@@ -34,6 +34,10 @@ def create_features(df):
 
     df = df.copy()
 
+    df['ds'] = pd.to_datetime(df['ds'])
+
+    df = df.sort_values('ds')
+
     df['month'] = df['ds'].dt.month
 
     df['year'] = df['ds'].dt.year
@@ -50,39 +54,64 @@ def create_features(df):
         .mean()
     )
 
-    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.replace(
+        [np.inf, -np.inf],
+        np.nan
+    )
 
     df = df.dropna()
 
     return df
 
+
 def get_model(method):
 
     if method == 'XGBoost':
 
-        model = XGBRegressor()
+        model = XGBRegressor(
+            n_estimators=200,
+            learning_rate=0.05,
+            max_depth=5,
+            random_state=42
+        )
 
     elif method == 'LightGBM':
 
-        model = LGBMRegressor()
+        model = LGBMRegressor(
+            n_estimators=200,
+            learning_rate=0.05,
+            random_state=42
+        )
 
     elif method == 'Random Forest':
 
-        model = RandomForestRegressor()
+        model = RandomForestRegressor(
+            n_estimators=200,
+            random_state=42
+        )
 
     elif method == 'CatBoost':
 
         model = CatBoostRegressor(
+            iterations=200,
+            learning_rate=0.05,
             verbose=0
         )
 
     elif method == 'Extra Trees':
 
-        model = ExtraTreesRegressor()
+        model = ExtraTreesRegressor(
+            n_estimators=200,
+            random_state=42
+        )
 
     elif method == 'Gradient Boosting':
 
-        model = GradientBoostingRegressor()
+        model = GradientBoostingRegressor(
+            n_estimators=200,
+            learning_rate=0.05,
+            random_state=42
+        )
 
     elif method == 'ElasticNet':
 
@@ -90,7 +119,9 @@ def get_model(method):
 
     else:
 
-        model = RandomForestRegressor()
+        model = RandomForestRegressor(
+            random_state=42
+        )
 
     return model
 
@@ -98,6 +129,10 @@ def get_model(method):
 def prophet_forecast(item_df, periods=36):
 
     prophet_df = item_df[['ds', 'y']].copy()
+
+    prophet_df['ds'] = pd.to_datetime(
+        prophet_df['ds']
+    )
 
     model = Prophet(
         yearly_seasonality=True,
@@ -130,6 +165,10 @@ def prophet_forecast(item_df, periods=36):
         None
     )
 
+    result['Forecast Date'] = pd.to_datetime(
+        result['Forecast Date']
+    )
+
     return result
 
 
@@ -141,9 +180,13 @@ def create_sequence(data, seq_length):
 
     for i in range(len(data) - seq_length):
 
-        X.append(data[i:i + seq_length])
+        X.append(
+            data[i:i + seq_length]
+        )
 
-        y.append(data[i + seq_length])
+        y.append(
+            data[i + seq_length]
+        )
 
     return np.array(X), np.array(y)
 
@@ -160,7 +203,10 @@ def bilstm_forecast(item_df, periods=36):
 
     if len(scaled) <= seq_length:
 
-        return pd.DataFrame()
+        return pd.DataFrame({
+            'Forecast Date': [],
+            'Forecast': []
+        })
 
     X, y = create_sequence(
         scaled,
@@ -209,11 +255,11 @@ def bilstm_forecast(item_df, periods=36):
 
     current_batch = scaled[-seq_length:]
 
-    predictions = []
-
     current_batch = current_batch.reshape(
         (1, seq_length, 1)
     )
+
+    predictions = []
 
     for i in range(periods):
 
@@ -243,8 +289,9 @@ def bilstm_forecast(item_df, periods=36):
     )
 
     future_dates = pd.date_range(
-        start=item_df['ds'].max()
-        + pd.DateOffset(months=1),
+        start=pd.to_datetime(
+            item_df['ds'].max()
+        ) + pd.DateOffset(months=1),
         periods=periods,
         freq='MS'
     )
@@ -257,16 +304,24 @@ def bilstm_forecast(item_df, periods=36):
 
     })
 
+    forecast_df['Forecast Date'] = pd.to_datetime(
+        forecast_df['Forecast Date']
+    )
+
     return forecast_df
 
 
 def forecast_item(item_df, method, periods=36):
-    item_df = create_features(item_df)
 
-    if item_df.empty or len(item_df) < 5:
+    item_df = item_df.copy()
 
-    return pd.DataFrame()
+    item_df['ds'] = pd.to_datetime(
+        item_df['ds']
+    )
 
+    item_df = item_df.sort_values('ds')
+
+    # Prophet
     if method == 'Prophet':
 
         return prophet_forecast(
@@ -274,6 +329,7 @@ def forecast_item(item_df, method, periods=36):
             periods
         )
 
+    # BiLSTM
     if method == 'BiLSTM':
 
         return bilstm_forecast(
@@ -281,20 +337,45 @@ def forecast_item(item_df, method, periods=36):
             periods
         )
 
+    # ML Features
     item_df = create_features(item_df)
 
+    # Validation
+    if item_df.empty or len(item_df) < 5:
+
+        return pd.DataFrame({
+            'Forecast Date': [],
+            'Forecast': []
+        })
+
     features = [
+
         'month',
+
         'year',
+
         'lag_1',
+
         'lag_2',
+
         'lag_3',
+
         'rolling_mean_3'
+
     ]
 
     X = item_df[features]
 
     y = item_df['y']
+
+    X = X.replace(
+        [np.inf, -np.inf],
+        np.nan
+    )
+
+    X = X.fillna(0)
+
+    y = y.fillna(0)
 
     model = get_model(method)
 
@@ -304,12 +385,15 @@ def forecast_item(item_df, method, periods=36):
 
     temp_df = item_df.copy()
 
-    last_date = temp_df['ds'].max()
+    last_date = pd.to_datetime(
+        temp_df['ds'].max()
+    )
 
     for i in range(periods):
 
         future_date = (
-            pd.to_datetime(last_date) + pd.DateOffset(months=i+1)
+            last_date
+            + pd.DateOffset(months=i+1)
         )
 
         lag_1 = temp_df['y'].iloc[-1]
@@ -340,7 +424,11 @@ def forecast_item(item_df, method, periods=36):
 
         })
 
-        pred = model.predict(future_X)[0]
+        future_X = future_X.fillna(0)
+
+        pred = model.predict(
+            future_X
+        )[0]
 
         pred = max(pred, 0)
 
@@ -360,10 +448,10 @@ def forecast_item(item_df, method, periods=36):
 
         })
 
-        temp_df = pd.concat([
-            temp_df,
-            new_row
-        ])
+        temp_df = pd.concat(
+            [temp_df, new_row],
+            ignore_index=True
+        )
 
     forecast_df = pd.DataFrame(
         future_predictions
