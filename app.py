@@ -67,3 +67,148 @@ if uploaded_file is not None:
         'Choose Forecasting Method',
         RECOMMENDED_MODELS[category]
     )
+
+from utils.forecasting import forecast_item
+
+import plotly.graph_objects as go
+
+
+# ambil data item terpilih
+item_df = df[
+    df['Model'] == selected_model
+].copy()
+
+item_df = item_df.sort_values('ds')
+
+
+# forecast button
+if st.button('Run Forecast'):
+
+    with st.spinner('Forecasting...'):
+
+        forecast_df = forecast_item(
+            item_df,
+            selected_method,
+            periods=36
+        )
+
+    st.success('Forecast Completed')
+
+
+    # =========================
+    # FORECAST TABLE
+    # =========================
+
+    st.subheader('Forecast Result')
+
+    st.dataframe(forecast_df)
+
+
+
+    fig = go.Figure()
+
+    # actual
+    fig.add_trace(
+
+        go.Scatter(
+
+            x=item_df['ds'],
+
+            y=item_df['y'],
+
+            mode='lines+markers',
+
+            name='Actual'
+
+        )
+
+    )
+
+    # forecast
+    fig.add_trace(
+
+        go.Scatter(
+
+            x=forecast_df['Forecast Date'],
+
+            y=forecast_df['Forecast'],
+
+            mode='lines+markers',
+
+            name='Forecast'
+
+        )
+
+    )
+
+    fig.update_layout(
+
+        title=f'{selected_model} Forecast',
+
+        xaxis_title='Date',
+
+        yaxis_title='Sales',
+
+        hovermode='x unified',
+
+        height=600
+
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+
+
+    # SUMMARY
+
+    st.subheader('Forecast Summary')
+
+    total_forecast = (
+        forecast_df['Forecast']
+        .sum()
+    )
+
+    avg_forecast = (
+        forecast_df['Forecast']
+        .mean()
+    )
+
+    max_forecast = (
+        forecast_df['Forecast']
+        .max()
+    )
+
+    min_forecast = (
+        forecast_df['Forecast']
+        .min()
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.metric(
+            'Total Forecast',
+            f'{total_forecast:,.0f}'
+        )
+
+        st.metric(
+            'Average Forecast',
+            f'{avg_forecast:,.0f}'
+        )
+
+    with col2:
+
+        st.metric(
+            'Highest Forecast',
+            f'{max_forecast:,.0f}'
+        )
+
+        st.metric(
+            'Lowest Forecast',
+            f'{min_forecast:,.0f}'
+        )
+
