@@ -27,7 +27,7 @@ def classify_items(df):
             sales_norm = sales
 
 
-        # BASIC METRICS (RAW + NORM MIXED SECARA SENGAJA)
+        # BASIC METRICS
         mean_sales = np.mean(sales)
         std_sales = np.std(sales)
 
@@ -36,8 +36,8 @@ def classify_items(df):
         # aman untuk data kecil
         recent_12 = sales_norm[-12:] if len(sales_norm) >= 12 else sales_norm
 
-        # CV pakai raw (lebih meaningful untuk bisnis)
-        cv = std_sales / (mean_sales + 1e-9
+        # CV pakai raw
+        cv = std_sales / (mean_sales + 1e-9)
                           
         # TREND (NORMALIZED SLOPE)
         x = np.arange(len(sales_norm))
@@ -47,7 +47,7 @@ def classify_items(df):
         except:
             slope = 0
 
-        slope = np.clip(slope, -1, 1
+        slope = np.clip(slope, -1, 1)
                         
         # CLASSIFICATION LOGIC
         category = 'Stable'
