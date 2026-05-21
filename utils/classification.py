@@ -20,45 +20,43 @@ def classify_items(df):
 
         sales = item_df['y'].values
 
-        # normalize
-        if np.max(sales) != np.min(sales):
-            sales_norm = (sales - np.min(sales)) / (np.max(sales) - np.min(sales))
-        else:
-            sales_norm = sales
-        
-        mean_sales = np.mean(sales_norm)
-        std_sales = np.std(sales_norm)
-        zero_ratio = (sales == 0).mean()  
-        recent_12 = sales_norm[-12:]      
-        
+        mean_sales = np.mean(sales)
+
+        std_sales = np.std(sales)
+
+        zero_ratio = (sales == 0).mean()
+
+        recent_12 = sales[-12:]
+
         if mean_sales != 0:
             cv = std_sales / mean_sales
         else:
             cv = 999
-        
-        x = np.arange(len(sales_norm))
-        slope, _, _, _, _ = linregress(x, sales_norm)
-        
-        slope = np.clip(slope, -1, 1)
-        
+
+        x = np.arange(len(sales))
+
+        slope, _, _, _, _ = linregress(x, sales)
+
         category = 'Stable'
 
         if (recent_12 == 0).all():
+
             category = 'Discontinued'
 
         elif zero_ratio > 0.3:
+
             category = 'Intermittent'
 
-        elif slope < -0.2:
+        elif slope < -3:
+
             category = 'Declining'
-            
-        elif slope > 0.2:
-            category = 'Growing'
 
         elif cv > 1:
+
             category = 'Volatile'
 
         else:
+
             category = 'Stable'
 
         classification_results.append({
