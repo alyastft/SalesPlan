@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+
 from scipy.stats import linregress
 
 
@@ -11,48 +12,38 @@ def classify_items(df):
 
     for model_name in models:
 
-        item_df = df[df['Model'] == model_name].copy()
+        item_df = df[
+            df['Model'] == model_name
+        ].copy()
+
         item_df = item_df.sort_values('ds')
 
         sales = item_df['y'].values
 
-        # safety check
-        if len(sales) < 3:
-            continue
-
-        # NORMALISASI
+        # normalize
         if np.max(sales) != np.min(sales):
             sales_norm = (sales - np.min(sales)) / (np.max(sales) - np.min(sales))
         else:
             sales_norm = sales
-
-
-        # BASIC METRICS
-        mean_sales = np.mean(sales)
-        std_sales = np.std(sales)
-
-        zero_ratio = (sales == 0).mean()
-
-        # aman untuk data kecil
-        recent_12 = sales_norm[-12:] if len(sales_norm) >= 12 else sales_norm
-
-        # CV pakai raw
-        cv = std_sales / (mean_sales + 1e-9)
-                          
-        # TREND (NORMALIZED SLOPE)
+        
+        mean_sales = np.mean(sales_norm)
+        std_sales = np.std(sales_norm)
+        zero_ratio = (sales == 0).mean()  
+        recent_12 = sales_norm[-12:]      
+        
+        if mean_sales != 0:
+            cv = std_sales / mean_sales
+        else:
+            cv = 999
+        
         x = np.arange(len(sales_norm))
-
-        try:
-            slope, _, _, _, _ = linregress(x, sales_norm)
-        except:
-            slope = 0
-
+        slope, _, _, _, _ = linregress(x, sales_norm)
+        
         slope = np.clip(slope, -1, 1)
-                        
-        # CLASSIFICATION LOGIC
+        
         category = 'Stable'
 
-        if len(recent_12) > 0 and (recent_12 == 0).all():
+        if (recent_12 == 0).all():
             category = 'Discontinued'
 
         elif zero_ratio > 0.3:
@@ -60,7 +51,7 @@ def classify_items(df):
 
         elif slope < -0.2:
             category = 'Declining'
-
+            
         elif slope > 0.2:
             category = 'Growing'
 
@@ -70,19 +61,22 @@ def classify_items(df):
         else:
             category = 'Stable'
 
-        # OUTPUT
         classification_results.append({
 
             'Model': model_name,
+
             'KYB No': item_df['KYB No'].iloc[0],
 
             'Mean Sales': round(mean_sales, 2),
+
             'CV': round(cv, 2),
+
             'Zero Ratio': round(zero_ratio, 2),
 
-            'Trend Slope': round(slope, 4),
+            'Trend Slope': round(slope, 2),
 
             'Category': category
+
         })
 
     return pd.DataFrame(classification_results)
