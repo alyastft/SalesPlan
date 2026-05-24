@@ -1,0 +1,76 @@
+import streamlit as st
+import pandas as pd
+
+from utils.preprocessing import preprocess_data
+from utils.classification import classify_items
+from utils.helper import RECOMMENDED_MODELS
+
+st.set_page_config(
+    page_title='All Items Forecast',
+    layout='wide'
+)
+
+st.title('All Items Forecast Setup')
+
+uploaded_file = st.file_uploader(
+    'Upload Excel/CSV File',
+    type=['xlsx', 'csv']
+)
+
+if uploaded_file is not None:
+
+    if uploaded_file.name.endswith('.xlsx'):
+
+        df = pd.read_excel(uploaded_file)
+
+    else:
+
+        df = pd.read_csv(uploaded_file)
+
+    df = preprocess_data(df)
+
+    classification_df = classify_items(df)
+
+    st.subheader('Choose Forecast Model For Each Item')
+
+    selected_methods = {}
+
+    for i, row in classification_df.iterrows():
+
+        model_name = row['Model']
+
+        category = row['Category']
+
+        recommended = RECOMMENDED_MODELS[
+            category
+        ]
+
+        st.markdown(f'### {model_name}')
+
+        selected_method = st.selectbox(
+            f'Choose Method for {model_name}',
+            recommended,
+            key=model_name
+        )
+
+        selected_methods[model_name] = {
+            'Category': category,
+            'Method': selected_method
+        }
+
+    st.subheader('Selected Forecast Methods')
+
+    result_df = pd.DataFrame([
+
+        {
+            'Model': model,
+            'Category': values['Category'],
+            'Method': values['Method']
+        }
+
+        for model, values
+        in selected_methods.items()
+
+    ])
+
+    st.dataframe(result_df)
