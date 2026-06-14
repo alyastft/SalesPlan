@@ -5,7 +5,10 @@ import plotly.express as px
 from utils.preprocessing import preprocess_data
 from utils.eda import show_eda
 from utils.classification import classify_items
-from utils.forecasting import forecast_item
+from utils.forecasting import (
+    forecast_item,
+    evaluate_model
+)
 from utils.helper import RECOMMENDED_MODELS
 
 
@@ -237,11 +240,94 @@ def forecasting_page():
             "Forecast Result"
         )
 
-        st.dataframe(
-            final_forecast,
+        st.subheader(
+            "Total Forecast per Month"
+        )
+        
+        monthly_forecast = (
+            final_forecast
+            .groupby("Forecast Date")["Forecast"]
+            .sum()
+            .reset_index()
+        )
+        
+        fig = px.line(
+            monthly_forecast,
+            x="Forecast Date",
+            y="Forecast",
+            markers=True,
+            title="Total Sales Forecast"
+        )
+        
+        st.plotly_chart(
+            fig,
             use_container_width=True
         )
 
+        
+        st.subheader(
+            "Historical vs Forecast Per Product"
+        )
+        
+        selected_chart_product = st.selectbox(
+            "Choose Product",
+            final_forecast["Model"].unique()
+        )
+        
+        
+        history = (
+            df[
+                df["Model"] == selected_chart_product
+            ][["ds", "y"]]
+            .copy()
+        )
+        
+        history.columns = [
+            "Date",
+            "Sales"
+        ]
+        
+        history["Type"] = "Historical"
+        
+        
+        future = (
+            final_forecast[
+                final_forecast["Model"]
+                == selected_chart_product
+            ][["Forecast Date", "Forecast"]]
+            .copy()
+        )
+        
+        future.columns = [
+            "Date",
+            "Sales"
+        ]
+        
+        future["Type"] = "Forecast"
+        
+        
+        plot_df = pd.concat(
+            [
+                history,
+                future
+            ]
+        )
+        
+        
+        fig_item = px.line(
+            plot_df,
+            x="Date",
+            y="Sales",
+            color="Type",
+            markers=True,
+            title=f"Sales Forecast - {selected_chart_product}"
+        )
+        
+        
+        st.plotly_chart(
+            fig_item,
+            use_container_width=True
+        )
 
         # SUMMARY
         c1, c2, c3 = st.columns(3)
@@ -262,6 +348,14 @@ def forecasting_page():
         )
 
 
+        final_forecast["Forecast"] = (
+            final_forecast["Forecast"]
+            .astype(int)
+        )
+        final_forecast["MAPE (%)"] = (
+            final_forecast["MAPE (%)"]
+            .round(2)
+        )
         # EXPORT EXCEL
         output = io.BytesIO()
 
