@@ -1,76 +1,66 @@
 import streamlit as st
 
+from utils.eda import show_eda
+from utils.forecasting import show_forecasting
+
 st.set_page_config(
     page_title="Sales Forecasting System",
     page_icon="📈",
     layout="wide"
 )
 
-st.title("📈 Sales Forecasting System")
+# ==========================
+# SIDEBAR
+# ==========================
 
-st.markdown("""
-### PT Kayaba Indonesia
-
-Forecasting penjualan shock absorber menggunakan:
-
-- Machine Learning
-- Deep Learning
-- Time Series Forecasting
-
-### External Factors
-
-- Kurs USD/IDR
-- Kurs JPY/IDR
-- Produksi Motor Domestik
-- Produksi Motor Ekspor
-
-### Menu
-
-📊 Data Analysis
-
-📈 Forecasting All Items
-""")
-
-with open(
-    "assets/template.xlsx",
-    "rb"
-) as file:
-
-    st.download_button(
-        label="📥 Download Template",
-        data=file,
-        file_name="template.xlsx"
-    )
-
-st.info(
-    "Gunakan menu sidebar di sebelah kiri."
-)
-
-import streamlit as st
-
-from pages.data_analysis import show_data_analysis
-from pages.forecasting_all_item import forecast_all
-
-st.set_page_config(
-    page_title="Sales Forecasting System",
-    page_icon="📈",
-    layout="wide"
+st.sidebar.title(
+    "Sales Forecasting"
 )
 
 menu = st.sidebar.radio(
     "Menu",
     [
         "📊 Data Analysis",
-        "📈 Forecast All Item"
+        "📈 Forecasting All Item"
     ]
 )
 
+st.sidebar.markdown("---")
+
+with open(
+    "assets/template.xlsx",
+    "rb"
+) as file:
+
+    st.sidebar.download_button(
+        label="📥 Download Template",
+        data=file,
+        file_name="template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+st.sidebar.markdown("---")
+
+st.sidebar.info(
+    """
+    Forecasting System
+
+    External Factors:
+    - USD/IDR
+    - JPY/IDR
+    - Motor Production Domestic
+    - Motor Production Export
+    """
+)
+
+# ==========================
+# MAIN PAGE
+# ==========================
+
 if menu == "📊 Data Analysis":
-    show_data_analysis()
 
-elif menu == "📈 Forecast All Item":
-    forecast_all()
+    show_eda()
 
-else:
+elif menu == "📈 Forecasting All Item":
 
-    forecast_all()
+    show_forecasting()
