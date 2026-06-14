@@ -69,4 +69,4 @@ if menu == "Data Analysis":
 
 else:
 
-    show_forecasting()
+    forecast_all()
