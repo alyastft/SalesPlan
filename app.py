@@ -626,3 +626,40 @@ def forecasting_page():
             file_name="forecast_all_products.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+# =====================================================
+# SIDEBAR NAVIGATION
+# =====================================================
+
+st.sidebar.title(
+    "Navigation"
+)
+
+
+page = st.sidebar.radio(
+    "Choose Page",
+    [
+        "Home",
+        "Data Analysis",
+        "Forecast"
+    ]
+)
+
+
+# =====================================================
+# ROUTER
+# =====================================================
+
+if page == "Home":
+
+    home()
+
+
+elif page == "Data Analysis":
+
+    show_eda()
+
+
+elif page == "Forecast":
+
+    forecasting_page()
