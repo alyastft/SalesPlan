@@ -7,6 +7,7 @@ from utils.classification import classify_items
 from utils.forecasting import forecast_item
 from utils.helper import RECOMMENDED_MODELS
 
+def forecast_all():
 st.set_page_config(
     page_title="Forecast All Item",
     layout="wide"
