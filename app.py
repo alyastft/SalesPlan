@@ -46,23 +46,31 @@ st.info(
     "Gunakan menu sidebar di sebelah kiri."
 )
 
-import streamlit as st
+from pages.data_analysis import (
+    show_data_analysis
+)
 
-page = st.sidebar.radio(
+from pages.forecasting_all_item import (
+    show_forecasting
+)
+
+st.set_page_config(
+    page_title="Sales Forecasting",
+    layout="wide"
+)
+
+menu = st.sidebar.radio(
     "Menu",
     [
-        "Home",
         "Data Analysis",
-        "Forecasting All Items"
+        "Forecast All Item"
     ]
 )
-from pages.data_analysis import show_data_analysis
 
-if page == "Home":
-    show_home()
+if menu == "Data Analysis":
 
-elif page == "Data Analysis":
     show_data_analysis()
 
-elif page == "Forecasting All Items":
+else:
+
     show_forecasting()
