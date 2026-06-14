@@ -7,8 +7,7 @@ from utils.preprocessing import preprocess_data
 from utils.eda import show_eda
 from utils.classification import classify_items
 from utils.forecasting import (
-    forecast_item,
-    evaluate_model
+    forecast_item
 )
 from utils.helper import RECOMMENDED_MODELS
 
@@ -281,15 +280,6 @@ def forecasting_page():
 
 
             try:
-
-                # Hitung MAPE (Backtesting)
-               
-                mape = evaluate_model(
-                    item_df,
-                    method
-                )
-
-
                 # Forecast Future
                
                 forecast = forecast_item(
@@ -330,9 +320,6 @@ def forecasting_page():
 
 
                 forecast["Method"] = method
-
-
-                forecast["MAPE (%)"] = mape
 
 
                 # Hilangkan decimal forecast
@@ -400,16 +387,6 @@ def forecasting_page():
         )
 
 
-        # Rapikan MAPE
-        final_forecast["MAPE (%)"] = (
-            pd.to_numeric(
-                final_forecast["MAPE (%)"],
-                errors="coerce"
-            )
-            .round(2)
-        )
-
-
         # Susun urutan kolom
         final_forecast = final_forecast[
             [
@@ -417,7 +394,6 @@ def forecasting_page():
                 "KYB No",
                 "Category",
                 "Method",
-                "MAPE (%)",
                 "Forecast Date",
                 "Forecast"
             ]
