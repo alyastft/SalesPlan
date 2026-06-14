@@ -18,32 +18,43 @@ def preprocess_data(df):
         'Des': 'Dec'
     }
 
+    df = df.copy()
+
     df['Date'] = df['Date'].astype(str)
 
     for indo, eng in month_mapping.items():
 
         df['Date'] = df['Date'].str.replace(
             indo,
-            eng
+            eng,
+            regex=False
         )
 
-    # convert format Jan-21
     df['Date'] = pd.to_datetime(
         df['Date'],
         format='%b-%y'
     )
 
-    # ubah jadi awal bulan
-    df['Date'] = df['Date'].dt.to_period('M')
+    df['Date'] = (
+        df['Date']
+        .dt.to_period('M')
+        .dt.to_timestamp()
+    )
 
-    df['Date'] = df['Date'].dt.to_timestamp()
+    df = df.rename(
+        columns={
+            'Date': 'ds',
+            'Sales': 'y'
+        }
+    )
 
-    df = df.rename(columns={
+    df['y'] = pd.to_numeric(
+        df['y'],
+        errors='coerce'
+    )
 
-        'Date': 'ds',
-
-        'Sales': 'y'
-
-    })
+    df = df.dropna(
+        subset=['y']
+    )
 
     return df
