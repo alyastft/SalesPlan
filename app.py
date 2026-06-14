@@ -48,9 +48,7 @@ st.info(
 
 from pages.data_analysis import show_data_analysis
 
-from pages.forecasting_all_item import (
-    show_forecasting
-)
+from pages.forecasting_all_item import forecast_all
 
 st.set_page_config(
     page_title="Sales Forecasting",
