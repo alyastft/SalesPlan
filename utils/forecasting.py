@@ -159,11 +159,15 @@ def prophet_forecast(item_df, periods=36):
         'Forecast'
     ]
 
-    result['Forecast'] = np.clip(
+    result['Forecast'] = (
+    np.clip(
         result['Forecast'],
         0,
         None
     )
+    .round()
+    .astype(int)
+    )    
 
     result['Forecast Date'] = pd.to_datetime(
         result['Forecast Date']
@@ -282,10 +286,14 @@ def bilstm_forecast(item_df, periods=36):
 
     predictions = predictions.flatten()
 
-    predictions = np.clip(
+    predictions = (
+    np.clip(
         predictions,
         0,
         None
+    )
+    .round()
+    .astype(int)
     )
 
     future_dates = pd.date_range(
@@ -436,7 +444,7 @@ def forecast_item(item_df, method, periods=36):
 
             'Forecast Date': future_date,
 
-            'Forecast': pred
+            'Forecast': round(pred)
 
         })
 
@@ -462,3 +470,65 @@ def forecast_item(item_df, method, periods=36):
     )
 
     return forecast_df
+
+def calculate_mape(actual, forecast):
+
+    actual = np.array(actual)
+    forecast = np.array(forecast)
+
+    mask = actual != 0
+
+    if mask.sum() == 0:
+        return None
+
+    mape = np.mean(
+        np.abs(
+            (actual[mask] - forecast[mask])
+            / actual[mask]
+        )
+    ) * 100
+
+    return round(mape, 2)
+
+
+def evaluate_model(
+    item_df,
+    method,
+    test_period=12
+):
+
+    item_df = (
+        item_df
+        .sort_values("ds")
+        .copy()
+    )
+
+    if len(item_df) <= test_period + 5:
+        return None
+
+
+    train = item_df.iloc[:-test_period]
+
+    test = item_df.iloc[-test_period:]
+
+
+    prediction = forecast_item(
+        train,
+        method,
+        periods=test_period
+    )
+
+
+    if prediction.empty:
+        return None
+
+
+    actual = test["y"].values
+
+    forecast = prediction["Forecast"].values
+
+
+    return calculate_mape(
+        actual,
+        forecast
+    )
