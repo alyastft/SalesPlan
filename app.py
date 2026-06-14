@@ -56,6 +56,7 @@ page = st.sidebar.radio(
         "Forecasting All Items"
     ]
 )
+from pages.data_analysis import show_data_analysis
 
 if page == "Home":
     show_home()
