@@ -7,7 +7,7 @@ from utils.classification import classify_items
 
 st.set_page_config(layout="wide")
 
-def show_data_analyssis():
+def show_data_analysis():
     st.title("📊 Data Analysis")
 
 uploaded_file = st.file_uploader(
