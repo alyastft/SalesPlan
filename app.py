@@ -258,9 +258,13 @@ def forecasting_page():
 
             # Data aktual
             actual_df = df[df["Model"] == product][
-                ["Date", "Sales"]
-            ].rename(columns={"Sales": "Nilai"})
-            actual_df["Tipe"] = "Actual"
+                ["ds", "y"]
+            ].rename(
+                columns={
+                    "ds": "Date",
+                    "y": "Nilai"
+                }
+            )
 
             # Data forecast
             fc_df = final_forecast[
@@ -366,8 +370,15 @@ def mape_page():
         fc["Date"] = pd.to_datetime(fc["Date"])
 
         act = history_df[history_df["Model"] == product][
-            ["Date", "Sales"]
+            ["ds", "y"]
         ].copy()
+        
+        act = act.rename(
+            columns={
+                "ds": "Date",
+                "y": "Sales"
+            }
+        )
         act["Date"] = pd.to_datetime(act["Date"])
 
         # Inner join pada tanggal yang sama (in-sample overlap jika ada)
