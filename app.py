@@ -1,18 +1,17 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import io
 
 from utils.preprocessing import preprocess_data
 from utils.eda import show_eda
 from utils.classification import classify_items
-from utils.forecasting import (
-    forecast_item
-)
+from utils.forecasting import forecast_item
 from utils.helper import RECOMMENDED_MODELS
 
 
+# =====================================================
 # PAGE CONFIG
+# =====================================================
 
 st.set_page_config(
     page_title="Sales Forecasting Dashboard",
@@ -21,562 +20,262 @@ st.set_page_config(
 )
 
 
+# =====================================================
 # HOME PAGE
+# =====================================================
 
 def home():
 
     st.title("📈 Sales Forecasting Dashboard")
 
     st.markdown("""
-    ## Welcome
+    ### Welcome
 
-    Aplikasi ini digunakan untuk melakukan analisis
-    dan forecasting penjualan produk berdasarkan data historical.
+    Aplikasi ini digunakan untuk melakukan analisis dan forecasting
+    penjualan produk berdasarkan data historical.
 
-    ### Menu aplikasi
+    ### Fitur Aplikasi
 
-    ### 📊 Data Analysis
-    - Upload dataset
-    - Preview data
+    #### 1. Data Analysis
+    - Upload dataset penjualan
+    - Melihat preview data
     - Exploratory Data Analysis (EDA)
     - Analisis tren penjualan
-    - Klasifikasi produk:
+    - Klasifikasi produk menjadi:
         - Stable
         - Declining
         - Volatile
         - Intermittent
         - Discontinued
 
-    ### 🔮 Forecasting
-    - Forecast seluruh produk sekaligus
-    - Setiap produk dapat memilih model berbeda
-    - Model mengikuti rekomendasi kategori produk
-    - Perhitungan MAPE setiap produk
-    - Export hasil forecast ke Excel
+    #### 2. Forecasting
+    Melakukan prediksi penjualan produk menggunakan berbagai metode:
+    - XGBoost
+    - LightGBM
+    - CatBoost
+    - Random Forest
+    - Extra Trees
+    - Gradient Boosting
+    - ElasticNet
+    - Prophet
+    - BiLSTM
+
+    Model yang direkomendasikan akan menyesuaikan karakteristik produk.
     """)
 
-
     st.info(
-        "Gunakan menu sidebar untuk berpindah halaman."
+        "Silakan gunakan menu sidebar untuk berpindah halaman."
     )
 
 
+# =====================================================
 # FORECAST PAGE
+# =====================================================
 
 def forecasting_page():
 
-    st.title(
-        "🔮 Multi Product Forecasting"
-    )
+    import io
 
-
-    # Menyimpan hasil agar tidak hilang saat Streamlit rerun
-    if "forecast_result" not in st.session_state:
-
-        st.session_state.forecast_result = None
-
-
-    # Upload Dataset
+    st.title("🔮 Batch Sales Forecasting")
 
     uploaded_file = st.file_uploader(
-        "Upload Sales Dataset",
-        type=[
-            "csv"
-        ],
+        "Upload Dataset",
+        type=["csv", "xlsx"],
         key="forecast_file"
     )
 
-
     if uploaded_file is None:
-
-        st.info(
-            "Silakan upload dataset terlebih dahulu"
-        )
-
+        st.info("Upload dataset terlebih dahulu")
         return
 
 
-    # Load Dataset
-    
-    try:
+    # ======================
+    # LOAD DATA
+    # ======================
 
-        if uploaded_file.name.endswith(".xlsx"):
-
-            raw_df = pd.read_excel(
-                uploaded_file
-            )
-
-        else:
-
-            raw_df = pd.read_csv(
-                uploaded_file
-            )
+    if uploaded_file.name.endswith(".xlsx"):
+        raw_df = pd.read_excel(uploaded_file)
+    else:
+        raw_df = pd.read_csv(uploaded_file)
 
 
-    except Exception as e:
-
-        st.error(
-            f"Gagal membaca file: {e}"
-        )
-
-        return
-
-
-    # Preprocessing
-    
-    try:
-
-        df = preprocess_data(
-            raw_df
-        )
-
-    except Exception as e:
-
-        st.error(
-            f"Preprocessing gagal: {e}"
-        )
-
-        return
+    df = preprocess_data(raw_df)
 
 
     st.success(
-        f"Dataset berhasil dimuat: "
-        f"{df['Model'].nunique()} produk "
-        f"dengan {len(df)} data sales"
+        f"Dataset berhasil dimuat dengan {df['Model'].nunique()} produk"
     )
 
 
-    # Classification
-    
-    try:
+    # ======================
+    # MODEL SELECTION
+    # ======================
 
-        classify_df = classify_items(
-            df
-        )
+    models = [
+        "XGBoost",
+        "LightGBM",
+        "CatBoost",
+        "Random Forest",
+        "Extra Trees",
+        "Gradient Boosting",
+        "ElasticNet",
+        "Prophet",
+        "BiLSTM"
+    ]
 
-    except Exception as e:
 
-        st.error(
-            f"Klasifikasi gagal: {e}"
-        )
-
-        return
-
-
-    st.subheader(
-        "📌 Model Selection Per Product"
+    selected_model = st.selectbox(
+        "Pilih Forecast Model",
+        models
     )
-
-
-    st.caption(
-        "Pilih model forecasting untuk setiap produk "
-        "berdasarkan rekomendasi kategori."
-    )
-
-
-    selected_models = {}
-
-
-    # Select Model Setiap Item
-    
-    for _, row in classify_df.iterrows():
-
-        product = row["Model"]
-
-        category = row["Category"]
-
-
-        recommendations = RECOMMENDED_MODELS.get(
-            category,
-            ["Random Forest"]
-        )
-
-
-        col1, col2, col3 = st.columns(
-            [
-                4,
-                2,
-                4
-            ]
-        )
-
-
-        with col1:
-
-            st.write(
-                f"**{product}**"
-            )
-
-
-        with col2:
-
-            st.write(
-                category
-            )
-
-
-        with col3:
-
-            selected_models[product] = st.selectbox(
-                label="Model",
-                options=recommendations,
-                key=f"model_{product}",
-                label_visibility="collapsed"
-            )
-
-
-    st.divider()
 
 
     periods = st.slider(
         "Forecast Horizon (Month)",
-        min_value=1,
-        max_value=36,
-        value=12
+        1,
+        36,
+        12
     )
 
-    # GENERATE FORECAST
-    
-    if st.button(
-        "🚀 Generate Forecast Semua Produk",
-        type="primary"
-    ):
 
-        results = []
+    # ======================
+    # RUN FORECAST
+    # ======================
 
-        products = classify_df["Model"].tolist()
-
-        total_products = len(products)
+    if st.button("Generate All Forecast"):
 
 
-        # Progress bar
-        progress_bar = st.progress(0)
+        all_forecast = []
 
-        status_text = st.empty()
+
+        progress = st.progress(0)
+
+        products = df["Model"].unique()
 
 
         for i, product in enumerate(products):
 
-            item_df = (
-                df[
-                    df["Model"] == product
-                ]
-                .copy()
+            item_df = df[
+                df["Model"] == product
+            ].copy()
+
+
+            result = forecast_item(
+                item_df,
+                selected_model,
+                periods
             )
 
 
-            method = selected_models[product]
+            if not result.empty:
+
+                result["Model"] = product
 
 
-            status_text.info(
-                f"""
-                Processing {i+1}/{total_products}
-
-                Product: {product}
-
-                Model: {method}
-                """
-            )
-
-
-            try:
-                # Forecast Future
-               
-                forecast = forecast_item(
-                    item_df,
-                    method,
-                    periods
-                )
-
-
-                # Jika model tidak menghasilkan output
-                if forecast.empty:
-
-                    st.warning(
-                        f"{product} tidak memiliki hasil forecast."
-                    )
-
-                    continue
-
-
-                # Tambahkan informasi produk
-               
-                forecast["Model"] = product
-
-
-                forecast["KYB No"] = (
+                result["KYB No"] = (
                     item_df["KYB No"]
                     .iloc[0]
                 )
 
 
-                forecast["Category"] = (
-                    classify_df.loc[
-                        classify_df["Model"] == product,
-                        "Category"
-                    ]
-                    .iloc[0]
+                all_forecast.append(
+                    result
                 )
 
 
-                forecast["Method"] = method
-
-
-                # Hilangkan decimal forecast
-                forecast["Forecast"] = (
-                    forecast["Forecast"]
-                    .fillna(0)
-                    .round()
-                    .astype(int)
-                )
-
-
-                results.append(
-                    forecast
-                )
-
-
-            except Exception as e:
-
-                st.error(
-                    f"""
-                    Forecast gagal:
-
-                    Product: {product}
-
-                    Model: {method}
-
-                    Error:
-                    {e}
-                    """
-                )
-
-
-            # Update progress
-            progress_bar.progress(
-                (i + 1)
-                / total_products
+            progress.progress(
+                (i + 1) / len(products)
             )
 
 
-        # Selesai Forecast
-        
-        status_text.success(
-            "✅ Forecast seluruh produk selesai."
-        )
-
-
-        if len(results) == 0:
+        if len(all_forecast) == 0:
 
             st.error(
-                """
-                Tidak ada forecast yang berhasil dibuat.
-
-                Periksa pesan error di atas.
-                """
+                "Forecast gagal dibuat"
             )
 
             return
 
 
-        # Gabungkan semua hasil
-        
-        final_forecast = pd.concat(
-            results,
+        forecast_df = pd.concat(
+            all_forecast,
             ignore_index=True
         )
 
 
-        # Susun urutan kolom
-        final_forecast = final_forecast[
-            [
-                "Model",
-                "KYB No",
-                "Category",
-                "Method",
-                "Forecast Date",
-                "Forecast"
-            ]
-        ]
-
-
-        # Simpan ke session agar tidak hilang
-        st.session_state.forecast_result = (
-            final_forecast
-        )
-
-
-    # DISPLAY FORECAST RESULT
-    
-    if st.session_state.forecast_result is not None:
-
-        final_forecast = (
-            st.session_state.forecast_result
-        )
-
-
-        st.divider()
+        # ======================
+        # PREVIEW
+        # ======================
 
         st.subheader(
-            "📋 Forecast Result"
+            "Forecast Preview"
         )
 
-
         st.dataframe(
-            final_forecast,
+            forecast_df,
             use_container_width=True
         )
 
 
+        # ======================
         # SUMMARY
-    
+        # ======================
+
+        col1, col2, col3 = st.columns(3)
+
+
+        col1.metric(
+            "Jumlah Produk",
+            forecast_df["Model"].nunique()
+        )
+
+
+        col2.metric(
+            "Total Forecast",
+            f"{forecast_df['Forecast'].sum():,.0f}"
+        )
+
+
+        col3.metric(
+            "Jumlah Data Forecast",
+            len(forecast_df)
+        )
+
+
+        # ======================
+        # MONTHLY FORECAST
+        # ======================
+
         st.subheader(
-            "📊 Forecast Summary"
+            "Total Forecast per Month"
         )
 
 
-        c1, c2, c3 = st.columns(3)
-
-
-        c1.metric(
-            "Total Product",
-            final_forecast["Model"].nunique()
-        )
-
-
-        c2.metric(
-            "Total Forecast Sales",
-            f"{final_forecast['Forecast'].sum():,.0f}"
-        )
-
-
-        c3.metric(
-            "Total Forecast Rows",
-            len(final_forecast)
-        )
-
-
-        # TOTAL FORECAST PER MONTH
-    
-        st.subheader(
-            "📈 Total Forecast Per Month"
-        )
-
-
-        monthly_forecast = (
-            final_forecast
+        monthly = (
+            forecast_df
             .groupby("Forecast Date")["Forecast"]
             .sum()
             .reset_index()
         )
 
 
-        fig_total = px.line(
-            monthly_forecast,
+        fig = px.line(
+            monthly,
             x="Forecast Date",
             y="Forecast",
-            markers=True,
-            title="Total Sales Forecast Per Month"
+            markers=True
         )
 
 
         st.plotly_chart(
-            fig_total,
+            fig,
             use_container_width=True
         )
 
 
-        # HISTORICAL VS FORECAST
-    
-        st.subheader(
-            "📉 Historical vs Forecast Per Product"
-        )
-
-
-        selected_product = st.selectbox(
-            "Choose Product",
-            final_forecast["Model"].unique(),
-            key="forecast_chart_product"
-        )
-
-
-        history = (
-            df[
-                df["Model"] == selected_product
-            ][
-                ["ds", "y"]
-            ]
-            .copy()
-        )
-
-
-        history.columns = [
-            "Date",
-            "Sales"
-        ]
-
-
-        history["Type"] = (
-            "Historical"
-        )
-
-
-        future = (
-            final_forecast[
-                final_forecast["Model"]
-                == selected_product
-            ][
-                [
-                    "Forecast Date",
-                    "Forecast"
-                ]
-            ]
-            .copy()
-        )
-
-
-        future.columns = [
-            "Date",
-            "Sales"
-        ]
-
-
-        future["Type"] = (
-            "Forecast"
-        )
-
-
-        chart_df = pd.concat(
-            [
-                history,
-                future
-            ],
-            ignore_index=True
-        )
-
-
-        fig_product = px.line(
-            chart_df,
-            x="Date",
-            y="Sales",
-            color="Type",
-            markers=True,
-            title=f"Sales Trend - {selected_product}"
-        )
-
-
-        st.plotly_chart(
-            fig_product,
-            use_container_width=True
-        )
-
-
-        # DOWNLOAD EXCEL
-    
-        st.subheader(
-            "📥 Export Forecast"
-        )
-
+        # ======================
+        # EXPORT EXCEL
+        # ======================
 
         output = io.BytesIO()
 
@@ -586,10 +285,10 @@ def forecasting_page():
             engine="openpyxl"
         ) as writer:
 
-            final_forecast.to_excel(
+            forecast_df.to_excel(
                 writer,
                 index=False,
-                sheet_name="Forecast Result"
+                sheet_name="Forecast"
             )
 
 
@@ -597,19 +296,21 @@ def forecasting_page():
 
 
         st.download_button(
-            label="Download Forecast Excel",
+            "📥 Download Forecast Excel",
             data=output,
-            file_name="forecast_all_products.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            file_name=f"forecast_{selected_model}.xlsx",
+            mime=(
+                "application/"
+                "vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         )
+
 
 # =====================================================
 # SIDEBAR NAVIGATION
 # =====================================================
 
-st.sidebar.title(
-    "Navigation"
-)
+st.sidebar.title("Navigation")
 
 
 page = st.sidebar.radio(
