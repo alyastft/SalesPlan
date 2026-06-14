@@ -215,7 +215,7 @@ def forecasting_page():
                     ].values[0]
                 )
 
-                forecast[Method"] = method
+                forecast["Method"] = method
                 forecast["MAPE (%)"] = mape
 
 
