@@ -53,7 +53,17 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     cols_lower = {c.lower(): c for c in df.columns}
 
     # Kandidat nama kolom tanggal
-    date_candidates = ["date", "period", "bulan", "month", "tanggal", "time", "week", "year_month"]
+    date_candidates = [
+        "ds",
+        "date",
+        "period",
+        "bulan",
+        "month",
+        "tanggal",
+        "time",
+        "week",
+        "year_month"
+    ]
     col_date = None
     for cand in date_candidates:
         if cand in cols_lower:
@@ -70,7 +80,18 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
         col_date = df.columns[0]
 
     # Kandidat nama kolom sales / qty
-    sales_candidates = ["sales", "qty", "quantity", "penjualan", "volume", "amount", "nilai", "demand", "units"]
+    sales_candidates = [
+        "y",
+        "sales",
+        "qty",
+        "quantity",
+        "penjualan",
+        "volume",
+        "amount",
+        "nilai",
+        "demand",
+        "units"
+    ]
     col_sales = None
     for cand in sales_candidates:
         if cand in cols_lower:
@@ -229,6 +250,9 @@ def forecasting_page():
         raw_df = pd.read_csv(uploaded_file)
 
     df = preprocess_data(raw_df)
+    st.write(df.columns.tolist())
+
+    st.write(df.dtypes)
 
     # Deteksi kolom secara otomatis
     col_date, col_sales = detect_columns(df)
@@ -336,8 +360,8 @@ def forecasting_page():
 
         # Gunakan nama kolom yang terdeteksi
         fc_date_col = detect_forecast_col.__module__ and col_date  # reuse col_date
-        fc_date_col = col_date  # kolom tanggal di forecast output (sama)
-        fc_val_col = detect_forecast_col(final_forecast)
+        fc_date_col = "Forecast Date"
+        fc_val_col = "Forecast"
 
         # Debug info (lipat jika tidak dibutuhkan)
         with st.expander("ℹ️ Info Kolom yang Terdeteksi", expanded=False):
@@ -453,7 +477,8 @@ def mape_page():
     fc_val_col = detect_forecast_col(final_forecast)
 
     # Pastikan kolom tanggal di forecast ada — gunakan col_date jika tersedia
-    fc_date_col = col_date if col_date in final_forecast.columns else detect_columns(final_forecast)[0]
+    fc_date_col = "Forecast Date"
+    fc_val_col = "Forecast"
 
     # ── HITUNG MAPE PER PRODUK ────────────────────────────────────
     # Gabungkan forecast dengan data aktual pada periode yang overlap
