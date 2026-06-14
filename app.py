@@ -1,6 +1,10 @@
+import io
+
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 
 from utils.preprocessing import preprocess_data
 from utils.eda import show_eda
@@ -18,6 +22,58 @@ st.set_page_config(
     page_icon="📈",
     layout="wide"
 )
+
+
+# =====================================================
+# SESSION STATE INIT
+# =====================================================
+
+if "final_forecast" not in st.session_state:
+    st.session_state["final_forecast"] = None
+
+if "history_df" not in st.session_state:
+    st.session_state["history_df"] = None
+
+
+# =====================================================
+# HELPER: MAPE CALCULATION
+# =====================================================
+
+def calculate_mape(actual: pd.Series, predicted: pd.Series) -> float:
+    """
+    Hitung MAPE (Mean Absolute Percentage Error).
+    Nilai aktual 0 diabaikan agar tidak terjadi division-by-zero.
+    """
+    mask = actual != 0
+    if mask.sum() == 0:
+        return np.nan
+    return np.mean(
+        np.abs((actual[mask] - predicted[mask]) / actual[mask])
+    ) * 100
+
+
+def get_mape_label(mape: float) -> str:
+    """Kategori akurasi berdasarkan nilai MAPE."""
+    if np.isnan(mape):
+        return "N/A"
+    if mape < 10:
+        return "Sangat Baik"
+    if mape < 20:
+        return "Baik"
+    if mape < 50:
+        return "Cukup"
+    return "Kurang"
+
+
+def mape_color(mape: float) -> str:
+    label = get_mape_label(mape)
+    return {
+        "Sangat Baik": "🟢",
+        "Baik": "🔵",
+        "Cukup": "🟡",
+        "Kurang": "🔴",
+        "N/A": "⚪",
+    }[label]
 
 
 # =====================================================
@@ -61,6 +117,11 @@ def home():
     - BiLSTM
 
     Model yang direkomendasikan akan menyesuaikan karakteristik produk.
+
+    #### 3. MAPE Analysis
+    - Evaluasi akurasi forecast per produk
+    - Grafik perbandingan Forecast vs Actual per item
+    - Ringkasan akurasi keseluruhan
     """)
 
     st.info(
@@ -74,8 +135,6 @@ def home():
 
 def forecasting_page():
 
-    import io
-
     st.title("🔮 Multi Product Forecasting")
 
     uploaded_file = st.file_uploader(
@@ -88,27 +147,23 @@ def forecasting_page():
         st.info("Upload dataset terlebih dahulu")
         return
 
-
     # LOAD DATA
     if uploaded_file.name.endswith(".xlsx"):
         raw_df = pd.read_excel(uploaded_file)
     else:
         raw_df = pd.read_csv(uploaded_file)
 
-
     df = preprocess_data(raw_df)
 
+    # Simpan history ke session state untuk dipakai di halaman MAPE
+    st.session_state["history_df"] = df
 
     # CLASSIFICATION
     classify_df = classify_items(df)
 
-
-    st.subheader(
-        "Model Selection Per Product"
-    )
+    st.subheader("Model Selection Per Product")
 
     selected_models = {}
-
 
     # SELECT MODEL UNTUK SETIAP ITEM
     for idx, row in classify_df.iterrows():
@@ -121,22 +176,15 @@ def forecasting_page():
             ["Random Forest"]
         )
 
-        col1, col2, col3 = st.columns(
-            [3, 2, 3]
-        )
+        col1, col2, col3 = st.columns([3, 2, 3])
 
         with col1:
-            st.write(
-                f"**{model_name}**"
-            )
+            st.write(f"**{model_name}**")
 
         with col2:
-            st.write(
-                category
-            )
+            st.write(category)
 
         with col3:
-
             selected_models[model_name] = st.selectbox(
                 "Model",
                 recommendations,
@@ -144,9 +192,7 @@ def forecasting_page():
                 label_visibility="collapsed"
             )
 
-
     st.divider()
-
 
     periods = st.slider(
         "Forecast Horizon (Month)",
@@ -155,137 +201,405 @@ def forecasting_page():
         12
     )
 
-
     # GENERATE FORECAST
-    if st.button(
-        "Generate Forecast Semua Produk"
-    ):
+    if st.button("Generate Forecast Semua Produk"):
 
         progress = st.progress(0)
-
         results = []
-
-
         products = classify_df["Model"].tolist()
-
 
         for i, product in enumerate(products):
 
-            item_df = df[
-                df["Model"] == product
-            ].copy()
-
-
-            method = selected_models[
-                product
-            ]
-
-
-            forecast = forecast_item(
-                item_df,
-                method,
-                periods
-            )
-
+            item_df = df[df["Model"] == product].copy()
+            method = selected_models[product]
+            forecast = forecast_item(item_df, method, periods)
 
             if not forecast.empty:
-
                 forecast["Model"] = product
-
-                forecast["KYB No"] = (
-                    item_df["KYB No"]
-                    .iloc[0]
-                )
-
+                forecast["KYB No"] = item_df["KYB No"].iloc[0]
                 forecast["Category"] = (
                     classify_df.loc[
-                        classify_df["Model"] == product,
-                        "Category"
+                        classify_df["Model"] == product, "Category"
                     ].values[0]
                 )
-
                 forecast["Method"] = method
+                results.append(forecast)
 
-
-                results.append(
-                    forecast
-                )
-
-
-            progress.progress(
-                (i + 1) / len(products)
-            )
-
+            progress.progress((i + 1) / len(products))
 
         if len(results) == 0:
-
-            st.error(
-                "Tidak ada hasil forecast"
-            )
-
+            st.error("Tidak ada hasil forecast")
             return
 
+        final_forecast = pd.concat(results, ignore_index=True)
 
-        final_forecast = pd.concat(
-            results,
-            ignore_index=True
-        )
+        # Simpan ke session state agar bisa diakses halaman MAPE
+        st.session_state["final_forecast"] = final_forecast
 
+        # ── PREVIEW ──────────────────────────────────────────────
+        st.subheader("Forecast Result")
+        st.dataframe(final_forecast, use_container_width=True)
 
-        # PREVIEW
-        st.subheader(
-            "Forecast Result"
-        )
-
-        st.dataframe(
-            final_forecast,
-            use_container_width=True
-        )
-
-
-        # SUMMARY
+        # ── SUMMARY METRICS ───────────────────────────────────────
         c1, c2, c3 = st.columns(3)
-
-        c1.metric(
-            "Total Product",
-            final_forecast["Model"].nunique()
-        )
-
+        c1.metric("Total Product", final_forecast["Model"].nunique())
         c2.metric(
             "Total Forecast Sales",
             f"{final_forecast['Forecast'].sum():,.0f}"
         )
+        c3.metric("Total Rows", len(final_forecast))
 
-        c3.metric(
-            "Total Rows",
-            len(final_forecast)
-        )
+        st.divider()
 
+        # ── GRAFIK FORECAST VS ACTUAL PER ITEM ───────────────────
+        st.subheader("📊 Grafik Forecast vs Actual per Produk")
 
-        # EXPORT EXCEL
-        output = io.BytesIO()
+        for product in final_forecast["Model"].unique():
 
-        with pd.ExcelWriter(
-            output,
-            engine="openpyxl"
-        ) as writer:
+            # Data aktual
+            actual_df = df[df["Model"] == product][
+                ["Date", "Sales"]
+            ].rename(columns={"Sales": "Nilai"})
+            actual_df["Tipe"] = "Actual"
 
-            final_forecast.to_excel(
-                writer,
-                index=False,
-                sheet_name="Forecast"
+            # Data forecast
+            fc_df = final_forecast[
+                final_forecast["Model"] == product
+            ][["Date", "Forecast"]].rename(columns={"Forecast": "Nilai"})
+            fc_df["Tipe"] = "Forecast"
+
+            combined = pd.concat([actual_df, fc_df], ignore_index=True)
+
+            fig = go.Figure()
+
+            # Garis actual
+            act = combined[combined["Tipe"] == "Actual"]
+            fig.add_trace(go.Scatter(
+                x=act["Date"],
+                y=act["Nilai"],
+                mode="lines+markers",
+                name="Actual",
+                line=dict(color="#4C9BE8", width=2),
+                marker=dict(size=4),
+            ))
+
+            # Garis forecast
+            fct = combined[combined["Tipe"] == "Forecast"]
+            fig.add_trace(go.Scatter(
+                x=fct["Date"],
+                y=fct["Nilai"],
+                mode="lines+markers",
+                name="Forecast",
+                line=dict(color="#F97316", width=2, dash="dash"),
+                marker=dict(size=4),
+            ))
+
+            # Garis vertikal pemisah actual / forecast
+            if not act.empty and not fct.empty:
+                split_date = act["Date"].max()
+                fig.add_vline(
+                    x=split_date,
+                    line_dash="dot",
+                    line_color="gray",
+                    annotation_text="Forecast Start",
+                    annotation_position="top right",
+                )
+
+            fig.update_layout(
+                title=f"{product}",
+                xaxis_title="Tanggal",
+                yaxis_title="Sales",
+                legend=dict(orientation="h", y=1.12),
+                height=350,
+                margin=dict(t=60, b=40, l=40, r=20),
+                hovermode="x unified",
             )
 
+            st.plotly_chart(fig, use_container_width=True)
 
+        # ── EXPORT EXCEL ──────────────────────────────────────────
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            final_forecast.to_excel(
+                writer, index=False, sheet_name="Forecast"
+            )
         output.seek(0)
-
 
         st.download_button(
             "📥 Download Forecast Excel",
             data=output,
             file_name="forecast_all_products.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime=(
+                "application/vnd.openxmlformats-officedocument"
+                ".spreadsheetml.sheet"
+            ),
         )
+
+
+# =====================================================
+# MAPE PAGE
+# =====================================================
+
+def mape_page():
+
+    st.title("📐 MAPE Analysis — Akurasi Forecast")
+
+    final_forecast: pd.DataFrame | None = st.session_state.get(
+        "final_forecast"
+    )
+    history_df: pd.DataFrame | None = st.session_state.get("history_df")
+
+    if final_forecast is None or history_df is None:
+        st.warning(
+            "Belum ada hasil forecast. "
+            "Silakan jalankan forecasting terlebih dahulu di halaman **Forecast**."
+        )
+        return
+
+    # ── HITUNG MAPE PER PRODUK ────────────────────────────────────
+    # Gabungkan forecast dengan data aktual pada periode yang overlap
+    mape_rows = []
+
+    for product in final_forecast["Model"].unique():
+
+        fc = final_forecast[final_forecast["Model"] == product].copy()
+        fc["Date"] = pd.to_datetime(fc["Date"])
+
+        act = history_df[history_df["Model"] == product][
+            ["Date", "Sales"]
+        ].copy()
+        act["Date"] = pd.to_datetime(act["Date"])
+
+        # Inner join pada tanggal yang sama (in-sample overlap jika ada)
+        merged = fc.merge(act, on="Date", how="inner")
+
+        if merged.empty:
+            # Tidak ada overlap → pakai seluruh data aktual sebagai referensi
+            # dengan forecast terdekat (walk-forward approximation)
+            mape_val = np.nan
+        else:
+            mape_val = calculate_mape(
+                merged["Sales"], merged["Forecast"]
+            )
+
+        category = fc["Category"].iloc[0]
+        method = fc["Method"].iloc[0]
+
+        mape_rows.append(
+            {
+                "Produk": product,
+                "Kategori": category,
+                "Metode": method,
+                "MAPE (%)": round(mape_val, 2) if not np.isnan(mape_val) else np.nan,
+                "Akurasi": get_mape_label(mape_val),
+                "": mape_color(mape_val),
+            }
+        )
+
+    mape_df = pd.DataFrame(mape_rows)
+
+    # ── SUMMARY CARDS ──────────────────────────────────────────────
+    valid = mape_df["MAPE (%)"].dropna()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(
+        "Rata-rata MAPE",
+        f"{valid.mean():.2f} %" if len(valid) else "N/A",
+    )
+    c2.metric(
+        "MAPE Terbaik",
+        f"{valid.min():.2f} %" if len(valid) else "N/A",
+    )
+    c3.metric(
+        "MAPE Terburuk",
+        f"{valid.max():.2f} %" if len(valid) else "N/A",
+    )
+    c4.metric(
+        "Produk Dievaluasi",
+        len(mape_df),
+    )
+
+    st.divider()
+
+    # ── TABEL MAPE ────────────────────────────────────────────────
+    st.subheader("Tabel MAPE per Produk")
+
+    st.dataframe(
+        mape_df,
+        use_container_width=True,
+        column_config={
+            "MAPE (%)": st.column_config.NumberColumn(
+                "MAPE (%)", format="%.2f %%"
+            ),
+            "": st.column_config.TextColumn("Status", width="small"),
+        },
+    )
+
+    st.divider()
+
+    # ── BAR CHART MAPE ────────────────────────────────────────────
+    st.subheader("📊 Bar Chart MAPE per Produk")
+
+    plot_df = mape_df.dropna(subset=["MAPE (%)"]).sort_values(
+        "MAPE (%)", ascending=True
+    )
+
+    if plot_df.empty:
+        st.info(
+            "Tidak ada data overlap antara forecast dan aktual "
+            "untuk menghitung MAPE."
+        )
+    else:
+        color_map = {
+            "Sangat Baik": "#22c55e",
+            "Baik": "#3b82f6",
+            "Cukup": "#f59e0b",
+            "Kurang": "#ef4444",
+        }
+        plot_df["_color"] = plot_df["Akurasi"].map(color_map)
+
+        fig_bar = go.Figure(
+            go.Bar(
+                x=plot_df["MAPE (%)"],
+                y=plot_df["Produk"],
+                orientation="h",
+                marker_color=plot_df["_color"],
+                text=plot_df["MAPE (%)"].apply(lambda v: f"{v:.1f}%"),
+                textposition="outside",
+                hovertemplate=(
+                    "<b>%{y}</b><br>MAPE: %{x:.2f}%<extra></extra>"
+                ),
+            )
+        )
+
+        fig_bar.update_layout(
+            xaxis_title="MAPE (%)",
+            yaxis_title="",
+            height=max(300, len(plot_df) * 38),
+            margin=dict(t=20, b=40, l=10, r=60),
+            xaxis=dict(range=[0, plot_df["MAPE (%)"].max() * 1.25]),
+        )
+
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    st.divider()
+
+    # ── GRAFIK FORECAST VS ACTUAL PER ITEM ───────────────────────
+    st.subheader("📈 Forecast vs Actual per Produk")
+
+    products = final_forecast["Model"].unique().tolist()
+    selected_product = st.selectbox(
+        "Pilih Produk",
+        products,
+        key="mape_product_select",
+    )
+
+    if selected_product:
+
+        fc = final_forecast[
+            final_forecast["Model"] == selected_product
+        ].copy()
+        fc["Date"] = pd.to_datetime(fc["Date"])
+
+        act = history_df[
+            history_df["Model"] == selected_product
+        ][["Date", "Sales"]].copy()
+        act["Date"] = pd.to_datetime(act["Date"])
+
+        fig2 = go.Figure()
+
+        # Actual
+        fig2.add_trace(go.Scatter(
+            x=act["Date"],
+            y=act["Sales"],
+            mode="lines+markers",
+            name="Actual",
+            line=dict(color="#4C9BE8", width=2.5),
+            marker=dict(size=5),
+        ))
+
+        # Forecast
+        fig2.add_trace(go.Scatter(
+            x=fc["Date"],
+            y=fc["Forecast"],
+            mode="lines+markers",
+            name="Forecast",
+            line=dict(color="#F97316", width=2.5, dash="dash"),
+            marker=dict(size=5),
+        ))
+
+        # Garis vertikal pemisah
+        if not act.empty:
+            split_date = act["Date"].max()
+            fig2.add_vline(
+                x=split_date,
+                line_dash="dot",
+                line_color="gray",
+                annotation_text="Forecast Start",
+                annotation_position="top right",
+            )
+
+        # Overlay area overlap jika ada
+        merged = fc.merge(act, on="Date", how="inner")
+        if not merged.empty:
+            fig2.add_trace(go.Scatter(
+                x=merged["Date"],
+                y=merged["Sales"],
+                mode="markers",
+                name="Actual (overlap)",
+                marker=dict(
+                    color="#4C9BE8", size=8, symbol="circle-open",
+                    line=dict(width=2, color="#4C9BE8"),
+                ),
+            ))
+
+        # MAPE annotation
+        row = mape_df[mape_df["Produk"] == selected_product]
+        mape_val = row["MAPE (%)"].values[0] if not row.empty else np.nan
+        akurasi = row["Akurasi"].values[0] if not row.empty else "N/A"
+
+        subtitle = (
+            f"MAPE: {mape_val:.2f}% — {akurasi}"
+            if not np.isnan(mape_val)
+            else "MAPE: N/A (tidak ada data overlap)"
+        )
+
+        fig2.update_layout(
+            title=dict(
+                text=f"{selected_product}<br>"
+                     f"<sup style='color:gray'>{subtitle}</sup>",
+            ),
+            xaxis_title="Tanggal",
+            yaxis_title="Sales",
+            legend=dict(orientation="h", y=1.15),
+            height=420,
+            margin=dict(t=80, b=40, l=40, r=20),
+            hovermode="x unified",
+        )
+
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # ── EXPORT MAPE ───────────────────────────────────────────────
+    st.divider()
+
+    export_df = mape_df.drop(columns=["_color"], errors="ignore").drop(
+        columns=[""], errors="ignore"
+    )
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        export_df.to_excel(writer, index=False, sheet_name="MAPE")
+    output.seek(0)
+
+    st.download_button(
+        "📥 Download MAPE Excel",
+        data=output,
+        file_name="mape_analysis.xlsx",
+        mime=(
+            "application/vnd.openxmlformats-officedocument"
+            ".spreadsheetml.sheet"
+        ),
+    )
+
 
 # =====================================================
 # SIDEBAR NAVIGATION
@@ -293,31 +607,28 @@ def forecasting_page():
 
 st.sidebar.title("Navigation")
 
-
 page = st.sidebar.radio(
     "Choose Page",
     [
         "Home",
         "Data Analysis",
-        "Forecast"
+        "Forecast",
+        "MAPE Analysis",
     ]
 )
-
 
 # =====================================================
 # ROUTER
 # =====================================================
 
 if page == "Home":
-
     home()
 
-
 elif page == "Data Analysis":
-
     show_eda()
 
-
 elif page == "Forecast":
-
     forecasting_page()
+
+elif page == "MAPE Analysis":
+    mape_page()
