@@ -5,85 +5,81 @@ import plotly.express as px
 from utils.preprocessing import preprocess_data
 from utils.classification import classify_items
 
-st.set_page_config(
-    page_title="Data Analysis",
-    layout="wide"
-)
+st.set_page_config(layout="wide")
 
-st.title("Data Analysis & Exploratory Data Analysis")
+st.title("📊 Data Analysis")
 
 uploaded_file = st.file_uploader(
-    "Upload Excel/CSV File",
-    type=["xlsx", "csv"]
+    "Upload Dataset",
+    type=["xlsx","csv"]
 )
 
-if uploaded_file is not None:
+if uploaded_file:
 
     if uploaded_file.name.endswith(".xlsx"):
         df = pd.read_excel(uploaded_file)
     else:
         df = pd.read_csv(uploaded_file)
 
+    st.subheader("Raw Dataset")
+    st.dataframe(df)
+
     df = preprocess_data(df)
 
-    st.success("Dataset Loaded")
+    st.subheader("Processed Dataset")
+    st.dataframe(df)
 
-    st.header("Dataset Overview")
+    st.subheader("Dataset Summary")
 
-    col1, col2, col3, col4 = st.columns(4)
+    c1,c2,c3,c4 = st.columns(4)
 
-    with col1:
-        st.metric(
-            "Total Records",
-            len(df)
-        )
+    c1.metric(
+        "Rows",
+        len(df)
+    )
 
-    with col2:
-        st.metric(
-            "Total Products",
-            df["Model"].nunique()
-        )
+    c2.metric(
+        "Products",
+        df["Model"].nunique()
+    )
 
-    with col3:
-        st.metric(
-            "Start Period",
-            df["ds"].min().strftime("%b-%Y")
-        )
+    c3.metric(
+        "Total Sales",
+        f"{df['y'].sum():,.0f}"
+    )
 
-    with col4:
-        st.metric(
-            "End Period",
-            df["ds"].max().strftime("%b-%Y")
-        )
+    c4.metric(
+        "Average Sales",
+        f"{df['y'].mean():,.0f}"
+    )
 
-    st.dataframe(df.head())
+    st.subheader("Missing Values")
 
-    st.header("Missing Value Check")
+    missing = (
+        df.isnull()
+        .sum()
+        .reset_index()
+    )
 
-    missing_df = pd.DataFrame({
-        "Column": df.columns,
-        "Missing Values": df.isnull().sum().values
-    })
+    missing.columns = [
+        "Column",
+        "Missing"
+    ]
 
-    st.dataframe(missing_df)
+    st.dataframe(missing)
 
-    st.header("Statistical Summary")
+    st.subheader("Monthly Sales Trend")
 
-    st.dataframe(df.describe())
-
-    st.header("Monthly Sales Trend")
-
-    monthly_sales = (
+    monthly = (
         df.groupby("ds")["y"]
         .sum()
         .reset_index()
     )
 
     fig = px.line(
-        monthly_sales,
+        monthly,
         x="ds",
-        y="y",
-        title="Overall Monthly Sales Trend"
+        y="y"
     )
 
     st.plotly_chart(
@@ -91,91 +87,36 @@ if uploaded_file is not None:
         use_container_width=True
     )
 
-    st.header("Seasonality Analysis")
-
-    seasonality = (
-        df.assign(
-            Month=df["ds"].dt.month_name()
-        )
-        .groupby("Month")["y"]
-        .mean()
-        .reset_index()
+    st.subheader(
+        "Product Classification"
     )
-
-    month_order = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December"
-    ]
-
-    seasonality["Month"] = pd.Categorical(
-        seasonality["Month"],
-        categories=month_order,
-        ordered=True
-    )
-
-    seasonality = seasonality.sort_values(
-        "Month"
-    )
-
-    fig = px.bar(
-        seasonality,
-        x="Month",
-        y="y",
-        title="Average Sales per Month"
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-
-    st.header("Top 20 Best Selling Products")
-
-    top20 = (
-        df.groupby("Model")["y"]
-        .sum()
-        .sort_values(
-            ascending=False
-        )
-        .head(20)
-        .reset_index()
-    )
-
-    fig = px.bar(
-        top20,
-        x="Model",
-        y="y",
-        title="Top 20 Products"
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-    st.dataframe(top20)
-
-    st.header("Trend Classification")
 
     classification_df = classify_items(df)
 
-    st.dataframe(
-        classification_df,
+    st.dataframe(classification_df)
+
+    st.subheader(
+        "Category Distribution"
+    )
+
+    category_count = (
+        classification_df["Category"]
+        .value_counts()
+    )
+
+    fig2 = px.pie(
+        values=category_count.values,
+        names=category_count.index
+    )
+
+    st.plotly_chart(
+        fig2,
         use_container_width=True
     )
 
-    st.header("External Factors")
+    st.subheader(
+        "External Factors"
+    )
 
     usd = pd.read_excel(
         "assets/KursUSD.xlsx"
@@ -189,235 +130,25 @@ if uploaded_file is not None:
         "assets/ProduksiSepedaMotorSeluruh.xlsx"
     )
 
-    usd["Tanggal"] = pd.to_datetime(
-        usd["Tanggal"]
+    tab1,tab2,tab3 = st.tabs(
+        [
+            "USD",
+            "JPY",
+            "Motor Production"
+        ]
     )
 
-    jpy["Tanggal"] = pd.to_datetime(
-        jpy["Tanggal"]
-    )
+    with tab1:
+        st.dataframe(usd)
 
-    motor["Bulan"] = pd.to_datetime(
-        motor["Bulan"]
-    )
+    with tab2:
+        st.dataframe(jpy)
 
-    st.subheader("USD Exchange Rate")
-
-    fig = px.line(
-        usd,
-        x="Tanggal",
-        y="Kurs USD/IDR"
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-    st.subheader("JPY Exchange Rate")
-
-    fig = px.line(
-        jpy,
-        x="Tanggal",
-        y="Kurs JPY/IDR"
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-    st.subheader("Motorcycle Production")
-
-    fig = px.line(
-        motor,
-        x="Bulan",
-        y=["Domestik", "Ekspor"]
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-    st.header("Correlation Analysis")
-
-    sales_monthly = (
-        df.groupby("ds")["y"]
-        .sum()
-        .reset_index()
-    )
-
-    sales_monthly.columns = [
-        "ds",
-        "Sales"
-    ]
-
-    usd["ds"] = (
-        usd["Tanggal"]
-        .dt.to_period("M")
-        .dt.to_timestamp()
-    )
-
-    jpy["ds"] = (
-        jpy["Tanggal"]
-        .dt.to_period("M")
-        .dt.to_timestamp()
-    )
-
-    motor["ds"] = (
-        motor["Bulan"]
-        .dt.to_period("M")
-        .dt.to_timestamp()
-    )
-
-    corr_df = (
-        sales_monthly
-        .merge(
-            usd[["ds", "Kurs USD/IDR"]],
-            on="ds",
-            how="left"
-        )
-        .merge(
-            jpy[["ds", "Kurs JPY/IDR"]],
-            on="ds",
-            how="left"
-        )
-        .merge(
-            motor[
-                [
-                    "ds",
-                    "Domestik",
-                    "Ekspor"
-                ]
-            ],
-            on="ds",
-            how="left"
-        )
-    )
-
-    corr_matrix = corr_df.drop(
-        columns=["ds"]
-    ).corr()
-
-    st.dataframe(
-        corr_matrix.round(3)
-    )
+    with tab3:
+        st.dataframe(motor)
 
 else:
 
     st.info(
-        "Please upload file first"
+        "Upload file terlebih dahulu"
     )
-st.header("Sales Distribution")
-
-fig = px.histogram(
-    df,
-    x="y",
-    nbins=30,
-    title="Distribution of Sales"
-)
-
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-st.header("Outlier Analysis")
-
-fig = px.box(
-    df,
-    y="y",
-    title="Sales Outlier Detection"
-)
-
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-st.header("Product Category Distribution")
-
-cat_count = (
-    classification_df["Category"]
-    .value_counts()
-    .reset_index()
-)
-
-cat_count.columns = [
-    "Category",
-    "Count"
-]
-
-fig = px.pie(
-    cat_count,
-    names="Category",
-    values="Count"
-)
-
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-import plotly.express as px
-
-st.header("Correlation Heatmap")
-
-fig = px.imshow(
-    corr_matrix,
-    text_auto=True,
-    aspect="auto"
-)
-
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-df["Product Type"] = np.where(
-    df["KYB No"].str.endswith("-E"),
-    "Export",
-    "Domestic"
-)
-
-export_count = (
-    df[["Model", "Product Type"]]
-    .drop_duplicates()
-)
-
-fig = px.pie(
-    export_count,
-    names="Product Type"
-)
-
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-st.header("Top Growing Products")
-
-top_growing = (
-    classification_df
-    .sort_values(
-        "Trend Slope",
-        ascending=False
-    )
-    .head(10)
-)
-
-st.dataframe(top_growing)
-
-st.header("Top Declining Products")
-
-top_declining = (
-    classification_df
-    .sort_values(
-        "Trend Slope"
-    )
-    .head(10)
-)
-
-st.dataframe(top_declining)
-
