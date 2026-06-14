@@ -3,6 +3,7 @@ import io
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
 import plotly.graph_objects as go
 
 from utils.preprocessing import preprocess_data
@@ -47,16 +48,12 @@ if "col_sales" not in st.session_state:
 def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     """
     Deteksi otomatis nama kolom tanggal dan sales dari dataframe.
-    Mendukung nama kolom setelah rename oleh preprocess_data (ds, y).
     Kembalikan (col_date, col_sales).
     """
     cols_lower = {c.lower(): c for c in df.columns}
 
-    # 'ds' diletakkan pertama karena preprocess_data merename Date -> ds
-    date_candidates = [
-        "ds", "date", "period", "bulan", "month",
-        "tanggal", "time", "week", "year_month"
-    ]
+    # Kandidat nama kolom tanggal
+    date_candidates = ["date", "period", "bulan", "month", "tanggal", "time", "week", "year_month"]
     col_date = None
     for cand in date_candidates:
         if cand in cols_lower:
@@ -72,17 +69,14 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     if col_date is None:
         col_date = df.columns[0]
 
-    # 'y' diletakkan pertama karena preprocess_data merename Sales -> y
-    sales_candidates = [
-        "y", "sales", "qty", "quantity", "penjualan",
-        "volume", "amount", "nilai", "demand", "units"
-    ]
+    # Kandidat nama kolom sales / qty
+    sales_candidates = ["sales", "qty", "quantity", "penjualan", "volume", "amount", "nilai", "demand", "units"]
     col_sales = None
     for cand in sales_candidates:
         if cand in cols_lower:
             col_sales = cols_lower[cand]
             break
-    # Fallback: cari kolom numerik pertama selain kolom date dan kolom meta
+    # Fallback: cari kolom numerik pertama selain kolom date dan Model/KYB
     if col_sales is None:
         skip = {col_date.lower(), "model", "kyb no", "category", "method"}
         for c in df.columns:
@@ -98,21 +92,16 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     return col_date, col_sales
 
 
+# Lakukan hal yang sama untuk kolom forecast output
 def detect_forecast_col(df: pd.DataFrame) -> str:
-    """
-    Deteksi nama kolom hasil forecast (prediksi).
-    'forecast' diprioritaskan; 'y' sebagai fallback jika forecast_item
-    mengembalikan kolom bernama 'y'.
-    """
-    # Kolom meta yang harus dilewati
-    skip = {"model", "kyb no", "category", "method", "ds", "date"}
-
-    candidates = ["forecast", "y", "prediction", "prediksi", "yhat", "pred", "value"]
+    """Deteksi nama kolom hasil forecast (prediksi)."""
+    candidates = ["forecast", "prediction", "prediksi", "yhat", "pred", "value"]
     cols_lower = {c.lower(): c for c in df.columns}
     for cand in candidates:
         if cand in cols_lower:
             return cols_lower[cand]
-    # Fallback: kolom numerik pertama yang bukan meta
+    # Fallback: kolom numerik selain date/model/category
+    skip = {"model", "kyb no", "category", "method"}
     for c in df.columns:
         if c.lower() in skip:
             continue
@@ -155,10 +144,10 @@ def mape_color(mape: float) -> str:
     label = get_mape_label(mape)
     return {
         "Sangat Baik": "🟢",
-        "Baik":        "🔵",
-        "Cukup":       "🟡",
-        "Kurang":      "🔴",
-        "N/A":         "⚪",
+        "Baik": "🔵",
+        "Cukup": "🟡",
+        "Kurang": "🔴",
+        "N/A": "⚪",
     }[label]
 
 
@@ -167,6 +156,7 @@ def mape_color(mape: float) -> str:
 # =====================================================
 
 def home():
+
     st.title("📈 Sales Forecasting Dashboard")
 
     st.markdown("""
@@ -209,7 +199,9 @@ def home():
     - Ringkasan akurasi keseluruhan
     """)
 
-    st.info("Silakan gunakan menu sidebar untuk berpindah halaman.")
+    st.info(
+        "Silakan gunakan menu sidebar untuk berpindah halaman."
+    )
 
 
 # =====================================================
@@ -217,6 +209,7 @@ def home():
 # =====================================================
 
 def forecasting_page():
+
     st.title("🔮 Multi Product Forecasting")
 
     uploaded_file = st.file_uploader(
@@ -229,7 +222,7 @@ def forecasting_page():
         st.info("Upload dataset terlebih dahulu")
         return
 
-    # ── LOAD DATA ─────────────────────────────────────────────────
+    # LOAD DATA
     if uploaded_file.name.endswith(".xlsx"):
         raw_df = pd.read_excel(uploaded_file)
     else:
@@ -237,58 +230,73 @@ def forecasting_page():
 
     df = preprocess_data(raw_df)
 
-    # Deteksi kolom secara otomatis (mendukung ds/y setelah preprocessing)
+    # Deteksi kolom secara otomatis
     col_date, col_sales = detect_columns(df)
-    st.session_state["col_date"]  = col_date
+    st.session_state["col_date"] = col_date
     st.session_state["col_sales"] = col_sales
 
     # Simpan history ke session state untuk dipakai di halaman MAPE
     st.session_state["history_df"] = df
 
-    # ── CLASSIFICATION ────────────────────────────────────────────
+    # CLASSIFICATION
     classify_df = classify_items(df)
 
     st.subheader("Model Selection Per Product")
 
     selected_models = {}
 
-    for _, row in classify_df.iterrows():
-        model_name   = row["Model"]
-        category     = row["Category"]
-        recommendations = RECOMMENDED_MODELS.get(category, ["Random Forest"])
+    # SELECT MODEL UNTUK SETIAP ITEM
+    for idx, row in classify_df.iterrows():
+
+        model_name = row["Model"]
+        category = row["Category"]
+
+        recommendations = RECOMMENDED_MODELS.get(
+            category,
+            ["Random Forest"]
+        )
 
         col1, col2, col3 = st.columns([3, 2, 3])
+
         with col1:
             st.write(f"**{model_name}**")
+
         with col2:
             st.write(category)
+
         with col3:
             selected_models[model_name] = st.selectbox(
                 "Model",
                 recommendations,
                 key=f"model_{model_name}",
-                label_visibility="collapsed",
+                label_visibility="collapsed"
             )
 
     st.divider()
 
-    periods = st.slider("Forecast Horizon (Month)", 1, 36, 12)
+    periods = st.slider(
+        "Forecast Horizon (Month)",
+        1,
+        36,
+        12
+    )
 
-    # ── GENERATE FORECAST ─────────────────────────────────────────
+    # GENERATE FORECAST
     if st.button("Generate Forecast Semua Produk"):
 
         progress = st.progress(0)
-        results  = []
+        results = []
         products = classify_df["Model"].tolist()
 
         for i, product in enumerate(products):
-            item_df  = df[df["Model"] == product].copy()
-            method   = selected_models[product]
+
+            item_df = df[df["Model"] == product].copy()
+            method = selected_models[product]
             forecast = forecast_item(item_df, method, periods)
 
             if not forecast.empty:
-                forecast["Model"]    = product
-                forecast["KYB No"]   = item_df["KYB No"].iloc[0]
+                forecast["Model"] = product
+                forecast["KYB No"] = item_df["KYB No"].iloc[0]
                 forecast["Category"] = (
                     classify_df.loc[
                         classify_df["Model"] == product, "Category"
@@ -299,7 +307,7 @@ def forecasting_page():
 
             progress.progress((i + 1) / len(products))
 
-        if not results:
+        if len(results) == 0:
             st.error("Tidak ada hasil forecast")
             return
 
@@ -308,34 +316,16 @@ def forecasting_page():
         # Simpan ke session state agar bisa diakses halaman MAPE
         st.session_state["final_forecast"] = final_forecast
 
-        # ── DETEKSI KOLOM HASIL FORECAST ──────────────────────────
-        # col_date sudah dideteksi di atas; pastikan tersedia di final_forecast
-        if col_date in final_forecast.columns:
-            fc_date_col = col_date
-        else:
-            fc_date_col, _ = detect_columns(final_forecast)
-
-        fc_val_col = detect_forecast_col(final_forecast)
-
-        # ── DEBUG INFO ────────────────────────────────────────────
-        with st.expander("ℹ️ Info Kolom yang Terdeteksi", expanded=False):
-            st.write(f"**Kolom Tanggal (historis):** `{col_date}`")
-            st.write(f"**Kolom Sales (historis):** `{col_sales}`")
-            st.write(f"**Kolom Tanggal (forecast):** `{fc_date_col}`")
-            st.write(f"**Kolom Forecast:** `{fc_val_col}`")
-            st.write("**Semua kolom df:**", df.columns.tolist())
-            st.write("**Semua kolom forecast:**", final_forecast.columns.tolist())
-
-        # ── PREVIEW ───────────────────────────────────────────────
+        # ── PREVIEW ──────────────────────────────────────────────
         st.subheader("Forecast Result")
         st.dataframe(final_forecast, use_container_width=True)
 
         # ── SUMMARY METRICS ───────────────────────────────────────
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Product",        final_forecast["Model"].nunique())
+        c1.metric("Total Product", final_forecast["Model"].nunique())
         c2.metric(
             "Total Forecast Sales",
-            f"{final_forecast[fc_val_col].sum():,.0f}",
+            f"{final_forecast['Forecast'].sum():,.0f}"
         )
         c3.metric("Total Rows", len(final_forecast))
 
@@ -343,6 +333,20 @@ def forecasting_page():
 
         # ── GRAFIK FORECAST VS ACTUAL PER ITEM ───────────────────
         st.subheader("📊 Grafik Forecast vs Actual per Produk")
+
+        # Gunakan nama kolom yang terdeteksi
+        fc_date_col = detect_forecast_col.__module__ and col_date  # reuse col_date
+        fc_date_col = col_date  # kolom tanggal di forecast output (sama)
+        fc_val_col = detect_forecast_col(final_forecast)
+
+        # Debug info (lipat jika tidak dibutuhkan)
+        with st.expander("ℹ️ Info Kolom yang Terdeteksi", expanded=False):
+            st.write(f"**Kolom Tanggal (historis):** `{col_date}`")
+            st.write(f"**Kolom Sales (historis):** `{col_sales}`")
+            st.write(f"**Kolom Forecast:** `{fc_val_col}`")
+            st.write(f"**Kolom Tanggal (forecast):** `{fc_date_col}`")
+            st.write("**Semua kolom df:**", df.columns.tolist())
+            st.write("**Semua kolom forecast:**", final_forecast.columns.tolist())
 
         for product in final_forecast["Model"].unique():
 
@@ -352,19 +356,10 @@ def forecasting_page():
             act_raw["Date"] = pd.to_datetime(act_raw["Date"])
             act_raw["Tipe"] = "Actual"
 
-            # Data forecast — gunakan fc_date_col dan fc_val_col yang sudah divalidasi
-            fc_subset = final_forecast[final_forecast["Model"] == product]
-
-            # Pastikan kolom ada sebelum diakses
-            missing = [c for c in [fc_date_col, fc_val_col] if c not in fc_subset.columns]
-            if missing:
-                st.warning(
-                    f"Produk **{product}**: kolom `{missing}` tidak ditemukan "
-                    f"di hasil forecast. Kolom tersedia: {fc_subset.columns.tolist()}"
-                )
-                continue
-
-            fc_raw = fc_subset[[fc_date_col, fc_val_col]].copy()
+            # Data forecast
+            fc_raw = final_forecast[final_forecast["Model"] == product][
+                [fc_date_col, fc_val_col]
+            ].copy()
             fc_raw = fc_raw.rename(columns={fc_date_col: "Date", fc_val_col: "Nilai"})
             fc_raw["Date"] = pd.to_datetime(fc_raw["Date"])
             fc_raw["Tipe"] = "Forecast"
@@ -415,7 +410,9 @@ def forecasting_page():
         # ── EXPORT EXCEL ──────────────────────────────────────────
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            final_forecast.to_excel(writer, index=False, sheet_name="Forecast")
+            final_forecast.to_excel(
+                writer, index=False, sheet_name="Forecast"
+            )
         output.seek(0)
 
         st.download_button(
@@ -434,12 +431,13 @@ def forecasting_page():
 # =====================================================
 
 def mape_page():
+
     st.title("📐 MAPE Analysis — Akurasi Forecast")
 
     final_forecast: pd.DataFrame | None = st.session_state.get("final_forecast")
-    history_df:     pd.DataFrame | None = st.session_state.get("history_df")
-    col_date:       str | None          = st.session_state.get("col_date")
-    col_sales:      str | None          = st.session_state.get("col_sales")
+    history_df: pd.DataFrame | None = st.session_state.get("history_df")
+    col_date: str | None = st.session_state.get("col_date")
+    col_sales: str | None = st.session_state.get("col_sales")
 
     if final_forecast is None or history_df is None:
         st.warning(
@@ -454,13 +452,11 @@ def mape_page():
 
     fc_val_col = detect_forecast_col(final_forecast)
 
-    # Pastikan fc_date_col valid di dalam final_forecast
-    if col_date in final_forecast.columns:
-        fc_date_col = col_date
-    else:
-        fc_date_col, _ = detect_columns(final_forecast)
+    # Pastikan kolom tanggal di forecast ada — gunakan col_date jika tersedia
+    fc_date_col = col_date if col_date in final_forecast.columns else detect_columns(final_forecast)[0]
 
     # ── HITUNG MAPE PER PRODUK ────────────────────────────────────
+    # Gabungkan forecast dengan data aktual pada periode yang overlap
     mape_rows = []
 
     for product in final_forecast["Model"].unique():
@@ -477,26 +473,29 @@ def mape_page():
         merged = fc.merge(
             act[["_date_", col_sales]],
             on="_date_",
-            how="inner",
+            how="inner"
         )
 
-        mape_val = (
-            calculate_mape(merged[col_sales], merged[fc_val_col])
-            if not merged.empty
-            else np.nan
-        )
+        if merged.empty:
+            mape_val = np.nan
+        else:
+            mape_val = calculate_mape(
+                merged[col_sales], merged[fc_val_col]
+            )
 
         category = fc["Category"].iloc[0]
-        method   = fc["Method"].iloc[0]
+        method = fc["Method"].iloc[0]
 
-        mape_rows.append({
-            "Produk":   product,
-            "Kategori": category,
-            "Metode":   method,
-            "MAPE (%)": round(mape_val, 2) if not np.isnan(mape_val) else np.nan,
-            "Akurasi":  get_mape_label(mape_val),
-            "Status":   mape_color(mape_val),
-        })
+        mape_rows.append(
+            {
+                "Produk": product,
+                "Kategori": category,
+                "Metode": method,
+                "MAPE (%)": round(mape_val, 2) if not np.isnan(mape_val) else np.nan,
+                "Akurasi": get_mape_label(mape_val),
+                "": mape_color(mape_val),
+            }
+        )
 
     mape_df = pd.DataFrame(mape_rows)
 
@@ -504,10 +503,22 @@ def mape_page():
     valid = mape_df["MAPE (%)"].dropna()
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Rata-rata MAPE",   f"{valid.mean():.2f} %" if len(valid) else "N/A")
-    c2.metric("MAPE Terbaik",     f"{valid.min():.2f} %"  if len(valid) else "N/A")
-    c3.metric("MAPE Terburuk",    f"{valid.max():.2f} %"  if len(valid) else "N/A")
-    c4.metric("Produk Dievaluasi", len(mape_df))
+    c1.metric(
+        "Rata-rata MAPE",
+        f"{valid.mean():.2f} %" if len(valid) else "N/A",
+    )
+    c2.metric(
+        "MAPE Terbaik",
+        f"{valid.min():.2f} %" if len(valid) else "N/A",
+    )
+    c3.metric(
+        "MAPE Terburuk",
+        f"{valid.max():.2f} %" if len(valid) else "N/A",
+    )
+    c4.metric(
+        "Produk Dievaluasi",
+        len(mape_df),
+    )
 
     st.divider()
 
@@ -518,8 +529,10 @@ def mape_page():
         mape_df,
         use_container_width=True,
         column_config={
-            "MAPE (%)": st.column_config.NumberColumn("MAPE (%)", format="%.2f %%"),
-            "Status":   st.column_config.TextColumn("Status", width="small"),
+            "MAPE (%)": st.column_config.NumberColumn(
+                "MAPE (%)", format="%.2f %%"
+            ),
+            "": st.column_config.TextColumn("Status", width="small"),
         },
     )
 
@@ -540,11 +553,10 @@ def mape_page():
     else:
         color_map = {
             "Sangat Baik": "#22c55e",
-            "Baik":        "#3b82f6",
-            "Cukup":       "#f59e0b",
-            "Kurang":      "#ef4444",
+            "Baik": "#3b82f6",
+            "Cukup": "#f59e0b",
+            "Kurang": "#ef4444",
         }
-        plot_df = plot_df.copy()
         plot_df["_color"] = plot_df["Akurasi"].map(color_map)
 
         fig_bar = go.Figure(
@@ -555,7 +567,9 @@ def mape_page():
                 marker_color=plot_df["_color"],
                 text=plot_df["MAPE (%)"].apply(lambda v: f"{v:.1f}%"),
                 textposition="outside",
-                hovertemplate="<b>%{y}</b><br>MAPE: %{x:.2f}%<extra></extra>",
+                hovertemplate=(
+                    "<b>%{y}</b><br>MAPE: %{x:.2f}%<extra></extra>"
+                ),
             )
         )
 
@@ -574,17 +588,23 @@ def mape_page():
     # ── GRAFIK FORECAST VS ACTUAL PER ITEM ───────────────────────
     st.subheader("📈 Forecast vs Actual per Produk")
 
-    products         = final_forecast["Model"].unique().tolist()
-    selected_product = st.selectbox("Pilih Produk", products, key="mape_product_select")
+    products = final_forecast["Model"].unique().tolist()
+    selected_product = st.selectbox(
+        "Pilih Produk",
+        products,
+        key="mape_product_select",
+    )
 
     if selected_product:
 
-        fc = final_forecast[final_forecast["Model"] == selected_product].copy()
+        fc = final_forecast[
+            final_forecast["Model"] == selected_product
+        ].copy()
         fc["_date_"] = pd.to_datetime(fc[fc_date_col])
 
-        act = history_df[history_df["Model"] == selected_product][
-            [col_date, col_sales]
-        ].copy()
+        act = history_df[
+            history_df["Model"] == selected_product
+        ][[col_date, col_sales]].copy()
         act["_date_"] = pd.to_datetime(act[col_date])
 
         fig2 = go.Figure()
@@ -620,7 +640,7 @@ def mape_page():
                 annotation_position="top right",
             )
 
-        # Titik overlap actual pada periode forecast
+        # Overlay titik overlap
         merged2 = fc.merge(act[["_date_", col_sales]], on="_date_", how="inner")
         if not merged2.empty:
             fig2.add_trace(go.Scatter(
@@ -629,17 +649,15 @@ def mape_page():
                 mode="markers",
                 name="Actual (overlap)",
                 marker=dict(
-                    color="#4C9BE8",
-                    size=8,
-                    symbol="circle-open",
+                    color="#4C9BE8", size=8, symbol="circle-open",
                     line=dict(width=2, color="#4C9BE8"),
                 ),
             ))
 
         # MAPE annotation
-        row      = mape_df[mape_df["Produk"] == selected_product]
+        row = mape_df[mape_df["Produk"] == selected_product]
         mape_val = row["MAPE (%)"].values[0] if not row.empty else np.nan
-        akurasi  = row["Akurasi"].values[0]  if not row.empty else "N/A"
+        akurasi = row["Akurasi"].values[0] if not row.empty else "N/A"
 
         subtitle = (
             f"MAPE: {mape_val:.2f}% — {akurasi}"
@@ -665,8 +683,10 @@ def mape_page():
     # ── EXPORT MAPE ───────────────────────────────────────────────
     st.divider()
 
-    export_df = mape_df.drop(columns=["_color", "Status"], errors="ignore")
-    output    = io.BytesIO()
+    export_df = mape_df.drop(columns=["_color"], errors="ignore").drop(
+        columns=[""], errors="ignore"
+    )
+    output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         export_df.to_excel(writer, index=False, sheet_name="MAPE")
     output.seek(0)
@@ -695,7 +715,7 @@ page = st.sidebar.radio(
         "Data Analysis",
         "Forecast",
         "MAPE Analysis",
-    ],
+    ]
 )
 
 # =====================================================
