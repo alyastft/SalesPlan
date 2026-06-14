@@ -34,6 +34,81 @@ if "final_forecast" not in st.session_state:
 if "history_df" not in st.session_state:
     st.session_state["history_df"] = None
 
+if "col_date" not in st.session_state:
+    st.session_state["col_date"] = None
+
+if "col_sales" not in st.session_state:
+    st.session_state["col_sales"] = None
+
+
+# =====================================================
+# HELPER: AUTO-DETECT COLUMN NAMES
+# =====================================================
+
+def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
+    """
+    Deteksi otomatis nama kolom tanggal dan sales dari dataframe.
+    Kembalikan (col_date, col_sales).
+    """
+    cols_lower = {c.lower(): c for c in df.columns}
+
+    # Kandidat nama kolom tanggal
+    date_candidates = ["date", "period", "bulan", "month", "tanggal", "time", "week", "year_month"]
+    col_date = None
+    for cand in date_candidates:
+        if cand in cols_lower:
+            col_date = cols_lower[cand]
+            break
+    # Fallback: cari kolom dengan dtype datetime
+    if col_date is None:
+        for c in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[c]):
+                col_date = c
+                break
+    # Fallback terakhir: kolom pertama
+    if col_date is None:
+        col_date = df.columns[0]
+
+    # Kandidat nama kolom sales / qty
+    sales_candidates = ["sales", "qty", "quantity", "penjualan", "volume", "amount", "nilai", "demand", "units"]
+    col_sales = None
+    for cand in sales_candidates:
+        if cand in cols_lower:
+            col_sales = cols_lower[cand]
+            break
+    # Fallback: cari kolom numerik pertama selain kolom date dan Model/KYB
+    if col_sales is None:
+        skip = {col_date.lower(), "model", "kyb no", "category", "method"}
+        for c in df.columns:
+            if c.lower() in skip:
+                continue
+            if pd.api.types.is_numeric_dtype(df[c]):
+                col_sales = c
+                break
+    # Fallback terakhir
+    if col_sales is None:
+        col_sales = df.columns[-1]
+
+    return col_date, col_sales
+
+
+# Lakukan hal yang sama untuk kolom forecast output
+def detect_forecast_col(df: pd.DataFrame) -> str:
+    """Deteksi nama kolom hasil forecast (prediksi)."""
+    candidates = ["forecast", "prediction", "prediksi", "yhat", "pred", "value"]
+    cols_lower = {c.lower(): c for c in df.columns}
+    for cand in candidates:
+        if cand in cols_lower:
+            return cols_lower[cand]
+    # Fallback: kolom numerik selain date/model/category
+    skip = {"model", "kyb no", "category", "method"}
+    for c in df.columns:
+        if c.lower() in skip:
+            continue
+        if pd.api.types.is_numeric_dtype(df[c]):
+            return c
+    return df.columns[-1]
+
 
 # =====================================================
 # HELPER: MAPE CALCULATION
@@ -155,6 +230,11 @@ def forecasting_page():
 
     df = preprocess_data(raw_df)
 
+    # Deteksi kolom secara otomatis
+    col_date, col_sales = detect_columns(df)
+    st.session_state["col_date"] = col_date
+    st.session_state["col_sales"] = col_sales
+
     # Simpan history ke session state untuk dipakai di halaman MAPE
     st.session_state["history_df"] = df
 
@@ -254,44 +334,50 @@ def forecasting_page():
         # ── GRAFIK FORECAST VS ACTUAL PER ITEM ───────────────────
         st.subheader("📊 Grafik Forecast vs Actual per Produk")
 
+        # Gunakan nama kolom yang terdeteksi
+        fc_date_col = detect_forecast_col.__module__ and col_date  # reuse col_date
+        fc_date_col = col_date  # kolom tanggal di forecast output (sama)
+        fc_val_col = detect_forecast_col(final_forecast)
+
+        # Debug info (lipat jika tidak dibutuhkan)
+        with st.expander("ℹ️ Info Kolom yang Terdeteksi", expanded=False):
+            st.write(f"**Kolom Tanggal (historis):** `{col_date}`")
+            st.write(f"**Kolom Sales (historis):** `{col_sales}`")
+            st.write(f"**Kolom Forecast:** `{fc_val_col}`")
+            st.write(f"**Kolom Tanggal (forecast):** `{fc_date_col}`")
+            st.write("**Semua kolom df:**", df.columns.tolist())
+            st.write("**Semua kolom forecast:**", final_forecast.columns.tolist())
+
         for product in final_forecast["Model"].unique():
 
             # Data aktual
-            actual_df = df[df["Model"] == product][
-                ["ds", "y"]
-            ].rename(
-                columns={
-                    "ds": "Date",
-                    "y": "Nilai"
-                }
-            )
+            act_raw = df[df["Model"] == product][[col_date, col_sales]].copy()
+            act_raw = act_raw.rename(columns={col_date: "Date", col_sales: "Nilai"})
+            act_raw["Date"] = pd.to_datetime(act_raw["Date"])
+            act_raw["Tipe"] = "Actual"
 
             # Data forecast
-            fc_df = final_forecast[
-                final_forecast["Model"] == product
-            ][["Date", "Forecast"]].rename(columns={"Forecast": "Nilai"})
-            fc_df["Tipe"] = "Forecast"
-
-            combined = pd.concat([actual_df, fc_df], ignore_index=True)
+            fc_raw = final_forecast[final_forecast["Model"] == product][
+                [fc_date_col, fc_val_col]
+            ].copy()
+            fc_raw = fc_raw.rename(columns={fc_date_col: "Date", fc_val_col: "Nilai"})
+            fc_raw["Date"] = pd.to_datetime(fc_raw["Date"])
+            fc_raw["Tipe"] = "Forecast"
 
             fig = go.Figure()
 
-            # Garis actual
-            act = combined[combined["Tipe"] == "Actual"]
             fig.add_trace(go.Scatter(
-                x=act["Date"],
-                y=act["Nilai"],
+                x=act_raw["Date"],
+                y=act_raw["Nilai"],
                 mode="lines+markers",
                 name="Actual",
                 line=dict(color="#4C9BE8", width=2),
                 marker=dict(size=4),
             ))
 
-            # Garis forecast
-            fct = combined[combined["Tipe"] == "Forecast"]
             fig.add_trace(go.Scatter(
-                x=fct["Date"],
-                y=fct["Nilai"],
+                x=fc_raw["Date"],
+                y=fc_raw["Nilai"],
                 mode="lines+markers",
                 name="Forecast",
                 line=dict(color="#F97316", width=2, dash="dash"),
@@ -299,8 +385,8 @@ def forecasting_page():
             ))
 
             # Garis vertikal pemisah actual / forecast
-            if not act.empty and not fct.empty:
-                split_date = act["Date"].max()
+            if not act_raw.empty and not fc_raw.empty:
+                split_date = act_raw["Date"].max()
                 fig.add_vline(
                     x=split_date,
                     line_dash="dot",
@@ -312,7 +398,7 @@ def forecasting_page():
             fig.update_layout(
                 title=f"{product}",
                 xaxis_title="Tanggal",
-                yaxis_title="Sales",
+                yaxis_title=col_sales,
                 legend=dict(orientation="h", y=1.12),
                 height=350,
                 margin=dict(t=60, b=40, l=40, r=20),
@@ -348,10 +434,10 @@ def mape_page():
 
     st.title("📐 MAPE Analysis — Akurasi Forecast")
 
-    final_forecast: pd.DataFrame | None = st.session_state.get(
-        "final_forecast"
-    )
+    final_forecast: pd.DataFrame | None = st.session_state.get("final_forecast")
     history_df: pd.DataFrame | None = st.session_state.get("history_df")
+    col_date: str | None = st.session_state.get("col_date")
+    col_sales: str | None = st.session_state.get("col_sales")
 
     if final_forecast is None or history_df is None:
         st.warning(
@@ -360,6 +446,15 @@ def mape_page():
         )
         return
 
+    # Fallback deteksi kolom jika session state kosong
+    if col_date is None or col_sales is None:
+        col_date, col_sales = detect_columns(history_df)
+
+    fc_val_col = detect_forecast_col(final_forecast)
+
+    # Pastikan kolom tanggal di forecast ada — gunakan col_date jika tersedia
+    fc_date_col = col_date if col_date in final_forecast.columns else detect_columns(final_forecast)[0]
+
     # ── HITUNG MAPE PER PRODUK ────────────────────────────────────
     # Gabungkan forecast dengan data aktual pada periode yang overlap
     mape_rows = []
@@ -367,30 +462,25 @@ def mape_page():
     for product in final_forecast["Model"].unique():
 
         fc = final_forecast[final_forecast["Model"] == product].copy()
-        fc["Date"] = pd.to_datetime(fc["Date"])
+        fc["_date_"] = pd.to_datetime(fc[fc_date_col])
 
         act = history_df[history_df["Model"] == product][
-            ["ds", "y"]
+            [col_date, col_sales]
         ].copy()
-        
-        act = act.rename(
-            columns={
-                "ds": "Date",
-                "y": "Sales"
-            }
-        )
-        act["Date"] = pd.to_datetime(act["Date"])
+        act["_date_"] = pd.to_datetime(act[col_date])
 
-        # Inner join pada tanggal yang sama (in-sample overlap jika ada)
-        merged = fc.merge(act, on="Date", how="inner")
+        # Inner join pada tanggal yang sama
+        merged = fc.merge(
+            act[["_date_", col_sales]],
+            on="_date_",
+            how="inner"
+        )
 
         if merged.empty:
-            # Tidak ada overlap → pakai seluruh data aktual sebagai referensi
-            # dengan forecast terdekat (walk-forward approximation)
             mape_val = np.nan
         else:
             mape_val = calculate_mape(
-                merged["Sales"], merged["Forecast"]
+                merged[col_sales], merged[fc_val_col]
             )
 
         category = fc["Category"].iloc[0]
@@ -510,19 +600,19 @@ def mape_page():
         fc = final_forecast[
             final_forecast["Model"] == selected_product
         ].copy()
-        fc["Date"] = pd.to_datetime(fc["Date"])
+        fc["_date_"] = pd.to_datetime(fc[fc_date_col])
 
         act = history_df[
             history_df["Model"] == selected_product
-        ][["Date", "Sales"]].copy()
-        act["Date"] = pd.to_datetime(act["Date"])
+        ][[col_date, col_sales]].copy()
+        act["_date_"] = pd.to_datetime(act[col_date])
 
         fig2 = go.Figure()
 
         # Actual
         fig2.add_trace(go.Scatter(
-            x=act["Date"],
-            y=act["Sales"],
+            x=act["_date_"],
+            y=act[col_sales],
             mode="lines+markers",
             name="Actual",
             line=dict(color="#4C9BE8", width=2.5),
@@ -531,8 +621,8 @@ def mape_page():
 
         # Forecast
         fig2.add_trace(go.Scatter(
-            x=fc["Date"],
-            y=fc["Forecast"],
+            x=fc["_date_"],
+            y=fc[fc_val_col],
             mode="lines+markers",
             name="Forecast",
             line=dict(color="#F97316", width=2.5, dash="dash"),
@@ -541,7 +631,7 @@ def mape_page():
 
         # Garis vertikal pemisah
         if not act.empty:
-            split_date = act["Date"].max()
+            split_date = act["_date_"].max()
             fig2.add_vline(
                 x=split_date,
                 line_dash="dot",
@@ -550,12 +640,12 @@ def mape_page():
                 annotation_position="top right",
             )
 
-        # Overlay area overlap jika ada
-        merged = fc.merge(act, on="Date", how="inner")
-        if not merged.empty:
+        # Overlay titik overlap
+        merged2 = fc.merge(act[["_date_", col_sales]], on="_date_", how="inner")
+        if not merged2.empty:
             fig2.add_trace(go.Scatter(
-                x=merged["Date"],
-                y=merged["Sales"],
+                x=merged2["_date_"],
+                y=merged2[col_sales],
                 mode="markers",
                 name="Actual (overlap)",
                 marker=dict(
@@ -581,7 +671,7 @@ def mape_page():
                      f"<sup style='color:gray'>{subtitle}</sup>",
             ),
             xaxis_title="Tanggal",
-            yaxis_title="Sales",
+            yaxis_title=col_sales,
             legend=dict(orientation="h", y=1.15),
             height=420,
             margin=dict(t=80, b=40, l=40, r=20),
