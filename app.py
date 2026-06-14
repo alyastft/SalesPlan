@@ -45,3 +45,23 @@ with open(
 st.info(
     "Gunakan menu sidebar di sebelah kiri."
 )
+
+import streamlit as st
+
+page = st.sidebar.radio(
+    "Menu",
+    [
+        "Home",
+        "Data Analysis",
+        "Forecasting All Items"
+    ]
+)
+
+if page == "Home":
+    show_home()
+
+elif page == "Data Analysis":
+    show_data_analysis()
+
+elif page == "Forecasting All Items":
+    show_forecasting()
