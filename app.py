@@ -182,8 +182,16 @@ def forecasting_page():
             method = selected_models[
                 product
             ]
-
-
+            
+            
+            # Hitung akurasi model
+            mape = evaluate_model(
+                item_df,
+                method
+            )
+            
+            
+            # Forecast masa depan
             forecast = forecast_item(
                 item_df,
                 method,
@@ -207,7 +215,8 @@ def forecasting_page():
                     ].values[0]
                 )
 
-                forecast["Method"] = method
+                forecast[Method"] = method
+                forecast["MAPE (%)"] = mape
 
 
                 results.append(
@@ -353,9 +362,24 @@ def forecasting_page():
             .astype(int)
         )
         final_forecast["MAPE (%)"] = (
-            final_forecast["MAPE (%)"]
+            pd.to_numeric(
+                final_forecast["MAPE (%)"],
+                errors="coerce"
+            )
             .round(2)
         )
+
+        final_forecast = final_forecast[
+            [
+                "Model",
+                "KYB No",
+                "Category",
+                "Method",
+                "MAPE (%)",
+                "Forecast Date",
+                "Forecast"
+            ]
+        ]
         # EXPORT EXCEL
         output = io.BytesIO()
 
