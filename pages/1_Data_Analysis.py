@@ -28,10 +28,6 @@ if uploaded_file is not None:
 
     st.success("Dataset Loaded")
 
-    # ==================================
-    # DATASET OVERVIEW
-    # ==================================
-
     st.header("Dataset Overview")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -62,10 +58,6 @@ if uploaded_file is not None:
 
     st.dataframe(df.head())
 
-    # ==================================
-    # MISSING VALUE
-    # ==================================
-
     st.header("Missing Value Check")
 
     missing_df = pd.DataFrame({
@@ -75,17 +67,9 @@ if uploaded_file is not None:
 
     st.dataframe(missing_df)
 
-    # ==================================
-    # STATISTICAL SUMMARY
-    # ==================================
-
     st.header("Statistical Summary")
 
     st.dataframe(df.describe())
-
-    # ==================================
-    # MONTHLY SALES TREND
-    # ==================================
 
     st.header("Monthly Sales Trend")
 
@@ -106,10 +90,6 @@ if uploaded_file is not None:
         fig,
         use_container_width=True
     )
-
-    # ==================================
-    # SEASONALITY
-    # ==================================
 
     st.header("Seasonality Analysis")
 
@@ -159,9 +139,6 @@ if uploaded_file is not None:
         use_container_width=True
     )
 
-    # ==================================
-    # TOP PRODUCTS
-    # ==================================
 
     st.header("Top 20 Best Selling Products")
 
@@ -189,10 +166,6 @@ if uploaded_file is not None:
 
     st.dataframe(top20)
 
-    # ==================================
-    # TREND CLASSIFICATION
-    # ==================================
-
     st.header("Trend Classification")
 
     classification_df = classify_items(df)
@@ -201,10 +174,6 @@ if uploaded_file is not None:
         classification_df,
         use_container_width=True
     )
-
-    # ==================================
-    # EXTERNAL FACTORS
-    # ==================================
 
     st.header("External Factors")
 
@@ -270,10 +239,6 @@ if uploaded_file is not None:
         fig,
         use_container_width=True
     )
-
-    # ==================================
-    # CORRELATION ANALYSIS
-    # ==================================
 
     st.header("Correlation Analysis")
 
@@ -344,3 +309,115 @@ else:
     st.info(
         "Please upload file first"
     )
+st.header("Sales Distribution")
+
+fig = px.histogram(
+    df,
+    x="y",
+    nbins=30,
+    title="Distribution of Sales"
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+st.header("Outlier Analysis")
+
+fig = px.box(
+    df,
+    y="y",
+    title="Sales Outlier Detection"
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+st.header("Product Category Distribution")
+
+cat_count = (
+    classification_df["Category"]
+    .value_counts()
+    .reset_index()
+)
+
+cat_count.columns = [
+    "Category",
+    "Count"
+]
+
+fig = px.pie(
+    cat_count,
+    names="Category",
+    values="Count"
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+import plotly.express as px
+
+st.header("Correlation Heatmap")
+
+fig = px.imshow(
+    corr_matrix,
+    text_auto=True,
+    aspect="auto"
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+df["Product Type"] = np.where(
+    df["KYB No"].str.endswith("-E"),
+    "Export",
+    "Domestic"
+)
+
+export_count = (
+    df[["Model", "Product Type"]]
+    .drop_duplicates()
+)
+
+fig = px.pie(
+    export_count,
+    names="Product Type"
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+st.header("Top Growing Products")
+
+top_growing = (
+    classification_df
+    .sort_values(
+        "Trend Slope",
+        ascending=False
+    )
+    .head(10)
+)
+
+st.dataframe(top_growing)
+
+st.header("Top Declining Products")
+
+top_declining = (
+    classification_df
+    .sort_values(
+        "Trend Slope"
+    )
+    .head(10)
+)
+
+st.dataframe(top_declining)
+
