@@ -171,6 +171,203 @@ def mape_color(mape: float) -> str:
 
 
 # =====================================================
+# HELPER: GRAFIK TOTAL BULANAN ACTUAL + FORECAST
+# =====================================================
+
+def plot_monthly_total(
+    history_df: pd.DataFrame,
+    final_forecast: pd.DataFrame,
+    col_date: str,
+    col_sales: str,
+    date_start: str = "2024-01-01",
+    date_end: str   = "2027-12-01",
+) -> None:
+    """
+    Tampilkan grafik total penjualan bulanan (semua item digabung):
+    - Actual  : dari history_df, difilter sesuai rentang tanggal
+    - Forecast: dari final_forecast kolom 'Forecast Date' & 'Forecast'
+    - Area abu-abu: zona forecast (setelah bulan terakhir aktual)
+    """
+
+    st.subheader("📅 Total Penjualan per Bulan — Semua Produk")
+
+    # ── Rentang filter ────────────────────────────────────────────
+    date_range_start = pd.Timestamp(date_start)
+    date_range_end   = pd.Timestamp(date_end)
+
+    # ── Actual: agregasi per bulan ────────────────────────────────
+    act = history_df[[col_date, col_sales]].copy()
+    act["Month"] = pd.to_datetime(act[col_date]).dt.to_period("M").dt.to_timestamp()
+    act_monthly = (
+        act.groupby("Month")[col_sales]
+        .sum()
+        .reset_index()
+        .rename(columns={col_sales: "Total"})
+    )
+    act_monthly = act_monthly[
+        (act_monthly["Month"] >= date_range_start)
+        & (act_monthly["Month"] <= date_range_end)
+    ].sort_values("Month")
+
+    # ── Forecast: agregasi per bulan ──────────────────────────────
+    fc = final_forecast[["Forecast Date", "Forecast"]].copy()
+    fc["Month"] = pd.to_datetime(fc["Forecast Date"]).dt.to_period("M").dt.to_timestamp()
+    fc_monthly = (
+        fc.groupby("Month")["Forecast"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Forecast": "Total"})
+    )
+    fc_monthly = fc_monthly[
+        (fc_monthly["Month"] >= date_range_start)
+        & (fc_monthly["Month"] <= date_range_end)
+    ].sort_values("Month")
+
+    if act_monthly.empty and fc_monthly.empty:
+        st.info("Tidak ada data dalam rentang Januari 2024 – Desember 2027.")
+        return
+
+    # ── Batas pemisah actual / forecast ──────────────────────────
+    split_date = act_monthly["Month"].max() if not act_monthly.empty else None
+
+    # ── Summary cards ─────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Actual",        f"{act_monthly['Total'].sum():,.0f}"
+              if not act_monthly.empty else "—")
+    c2.metric("Total Forecast",      f"{fc_monthly['Total'].sum():,.0f}"
+              if not fc_monthly.empty else "—")
+    c3.metric("Rata-rata Actual/bln",
+              f"{act_monthly['Total'].mean():,.0f}"
+              if not act_monthly.empty else "—")
+    c4.metric("Rata-rata Forecast/bln",
+              f"{fc_monthly['Total'].mean():,.0f}"
+              if not fc_monthly.empty else "—")
+
+    # ── Plotly figure ─────────────────────────────────────────────
+    fig = go.Figure()
+
+    # Area forecast (background shading)
+    if split_date is not None and not fc_monthly.empty:
+        fig.add_vrect(
+            x0=split_date,
+            x1=date_range_end,
+            fillcolor="rgba(249, 115, 22, 0.06)",
+            layer="below",
+            line_width=0,
+        )
+
+    # Trace actual — area + line
+    if not act_monthly.empty:
+        fig.add_trace(go.Scatter(
+            x=act_monthly["Month"],
+            y=act_monthly["Total"],
+            mode="lines+markers",
+            name="Actual",
+            fill="tozeroy",
+            fillcolor="rgba(76, 155, 232, 0.12)",
+            line=dict(color="#4C9BE8", width=2.5),
+            marker=dict(size=5, color="#4C9BE8"),
+            hovertemplate="<b>%{x|%b %Y}</b><br>Actual: %{y:,.0f}<extra></extra>",
+        ))
+
+    # Trace forecast — dashed line + markers
+    if not fc_monthly.empty:
+        fig.add_trace(go.Scatter(
+            x=fc_monthly["Month"],
+            y=fc_monthly["Total"],
+            mode="lines+markers",
+            name="Forecast",
+            line=dict(color="#F97316", width=2.5, dash="dash"),
+            marker=dict(size=5, color="#F97316"),
+            hovertemplate="<b>%{x|%b %Y}</b><br>Forecast: %{y:,.0f}<extra></extra>",
+        ))
+
+    # Garis vertikal pemisah
+    if split_date is not None:
+        fig.add_vline(
+            x=split_date,
+            line_dash="dot",
+            line_color="gray",
+            line_width=1.5,
+            annotation_text="↑ Mulai Forecast",
+            annotation_position="top right",
+            annotation_font=dict(size=11, color="gray"),
+        )
+
+    # Anotasi range tahun di sumbu X
+    fig.update_layout(
+        title=dict(
+            text="Total Penjualan Bulanan — Semua Produk "
+                 "<span style='font-size:13px;color:gray'>"
+                 "(Jan 2024 – Des 2027)</span>",
+            font=dict(size=16),
+        ),
+        xaxis=dict(
+            title="Bulan",
+            tickformat="%b %Y",
+            dtick="M3",                    # tick tiap 3 bulan
+            tickangle=-30,
+            range=[date_range_start, date_range_end + pd.DateOffset(months=1)],
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.06)",
+        ),
+        yaxis=dict(
+            title="Total Qty / Sales",
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.06)",
+            rangemode="tozero",
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+        ),
+        height=440,
+        margin=dict(t=80, b=60, l=60, r=20),
+        hovermode="x unified",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tabel ringkasan per tahun ─────────────────────────────────
+    with st.expander("📋 Ringkasan per Tahun", expanded=False):
+
+        all_monthly = pd.concat([
+            act_monthly.assign(Tipe="Actual"),
+            fc_monthly.assign(Tipe="Forecast"),
+        ], ignore_index=True)
+
+        all_monthly["Tahun"] = all_monthly["Month"].dt.year
+
+        pivot = (
+            all_monthly
+            .groupby(["Tahun", "Tipe"])["Total"]
+            .sum()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        # Pastikan kolom ada meski salah satu kosong
+        for col in ["Actual", "Forecast"]:
+            if col not in pivot.columns:
+                pivot[col] = 0
+
+        pivot["Total"] = pivot["Actual"] + pivot["Forecast"]
+        pivot["Actual"]   = pivot["Actual"].apply(lambda v: f"{v:,.0f}")
+        pivot["Forecast"] = pivot["Forecast"].apply(lambda v: f"{v:,.0f}")
+        pivot["Total"]    = pivot["Total"].apply(lambda v: f"{v:,.0f}")
+
+        st.dataframe(
+            pivot.rename(columns={"Tahun": "Tahun"}),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+# =====================================================
 # HOME PAGE
 # =====================================================
 
@@ -345,9 +542,19 @@ def forecasting_page():
 
         # ── Summary metrics ───────────────────────────────────────
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Product",       final_forecast["Model"].nunique())
+        c1.metric("Total Product",        final_forecast["Model"].nunique())
         c2.metric("Total Forecast Sales", f"{final_forecast['Forecast'].sum():,.0f}")
-        c3.metric("Total Rows",          len(final_forecast))
+        c3.metric("Total Rows",           len(final_forecast))
+
+        st.divider()
+
+        # ── Grafik Total Penjualan per Bulan (Actual + Forecast) ──
+        plot_monthly_total(
+            history_df=df,
+            final_forecast=final_forecast,
+            col_date=col_date,
+            col_sales=col_sales,
+        )
 
         st.divider()
 
