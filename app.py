@@ -39,7 +39,7 @@ st.set_page_config(
 
 
 # =====================================================
-# SECURITY INIT — jalankan sebelum apapun
+# SECURITY INIT
 # =====================================================
 
 init_session()
@@ -73,10 +73,6 @@ if "col_sales" not in st.session_state:
 # =====================================================
 
 def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
-    """
-    Deteksi otomatis nama kolom tanggal dan sales dari dataframe.
-    Kembalikan (col_date, col_sales).
-    """
     cols_lower = {c.lower(): c for c in df.columns}
 
     date_candidates = [
@@ -120,7 +116,6 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
 
 
 def detect_forecast_col(df: pd.DataFrame) -> str:
-    """Deteksi nama kolom hasil forecast (prediksi)."""
     candidates = ["forecast", "prediction", "prediksi", "yhat", "pred", "value"]
     cols_lower = {c.lower(): c for c in df.columns}
     for cand in candidates:
@@ -163,10 +158,10 @@ def get_mape_label(mape: float) -> str:
 def mape_color(mape: float) -> str:
     return {
         "Sangat Baik": "🟢",
-        "Baik": "🔵",
-        "Cukup": "🟡",
-        "Kurang": "🔴",
-        "N/A": "⚪",
+        "Baik":        "🔵",
+        "Cukup":       "🟡",
+        "Kurang":      "🔴",
+        "N/A":         "⚪",
     }[get_mape_label(mape)]
 
 
@@ -182,20 +177,11 @@ def plot_monthly_total(
     date_start: str = "2024-01-01",
     date_end: str   = "2027-12-01",
 ) -> None:
-    """
-    Tampilkan grafik total penjualan bulanan (semua item digabung):
-    - Actual  : dari history_df, difilter sesuai rentang tanggal
-    - Forecast: dari final_forecast kolom 'Forecast Date' & 'Forecast'
-    - Area abu-abu: zona forecast (setelah bulan terakhir aktual)
-    """
-
     st.subheader("📅 Total Penjualan per Bulan — Semua Produk")
 
-    # ── Rentang filter ────────────────────────────────────────────
     date_range_start = pd.Timestamp(date_start)
     date_range_end   = pd.Timestamp(date_end)
 
-    # ── Actual: agregasi per bulan ────────────────────────────────
     act = history_df[[col_date, col_sales]].copy()
     act["Month"] = pd.to_datetime(act[col_date]).dt.to_period("M").dt.to_timestamp()
     act_monthly = (
@@ -209,7 +195,6 @@ def plot_monthly_total(
         & (act_monthly["Month"] <= date_range_end)
     ].sort_values("Month")
 
-    # ── Forecast: agregasi per bulan ──────────────────────────────
     fc = final_forecast[["Forecast Date", "Forecast"]].copy()
     fc["Month"] = pd.to_datetime(fc["Forecast Date"]).dt.to_period("M").dt.to_timestamp()
     fc_monthly = (
@@ -227,26 +212,16 @@ def plot_monthly_total(
         st.info("Tidak ada data dalam rentang Januari 2024 – Desember 2027.")
         return
 
-    # ── Batas pemisah actual / forecast ──────────────────────────
     split_date = act_monthly["Month"].max() if not act_monthly.empty else None
 
-    # ── Summary cards ─────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Actual",        f"{act_monthly['Total'].sum():,.0f}"
-              if not act_monthly.empty else "—")
-    c2.metric("Total Forecast",      f"{fc_monthly['Total'].sum():,.0f}"
-              if not fc_monthly.empty else "—")
-    c3.metric("Rata-rata Actual/bln",
-              f"{act_monthly['Total'].mean():,.0f}"
-              if not act_monthly.empty else "—")
-    c4.metric("Rata-rata Forecast/bln",
-              f"{fc_monthly['Total'].mean():,.0f}"
-              if not fc_monthly.empty else "—")
+    c1.metric("Total Actual",           f"{act_monthly['Total'].sum():,.0f}"  if not act_monthly.empty else "—")
+    c2.metric("Total Forecast",         f"{fc_monthly['Total'].sum():,.0f}"   if not fc_monthly.empty else "—")
+    c3.metric("Rata-rata Actual/bln",   f"{act_monthly['Total'].mean():,.0f}" if not act_monthly.empty else "—")
+    c4.metric("Rata-rata Forecast/bln", f"{fc_monthly['Total'].mean():,.0f}"  if not fc_monthly.empty else "—")
 
-    # ── Plotly figure ─────────────────────────────────────────────
     fig = go.Figure()
 
-    # Area forecast (background shading)
     if split_date is not None and not fc_monthly.empty:
         fig.add_vrect(
             x0=split_date,
@@ -256,7 +231,6 @@ def plot_monthly_total(
             line_width=0,
         )
 
-    # Trace actual — area + line
     if not act_monthly.empty:
         fig.add_trace(go.Scatter(
             x=act_monthly["Month"],
@@ -270,7 +244,6 @@ def plot_monthly_total(
             hovertemplate="<b>%{x|%b %Y}</b><br>Actual: %{y:,.0f}<extra></extra>",
         ))
 
-    # Trace forecast — dashed line + markers
     if not fc_monthly.empty:
         fig.add_trace(go.Scatter(
             x=fc_monthly["Month"],
@@ -282,7 +255,6 @@ def plot_monthly_total(
             hovertemplate="<b>%{x|%b %Y}</b><br>Forecast: %{y:,.0f}<extra></extra>",
         ))
 
-    # Garis vertikal pemisah
     if split_date is not None:
         fig.add_vline(
             x=split_date,
@@ -294,7 +266,6 @@ def plot_monthly_total(
             annotation_font=dict(size=11, color="gray"),
         )
 
-    # Anotasi range tahun di sumbu X
     fig.update_layout(
         title=dict(
             text="Total Penjualan Bulanan — Semua Produk "
@@ -305,7 +276,7 @@ def plot_monthly_total(
         xaxis=dict(
             title="Bulan",
             tickformat="%b %Y",
-            dtick="M3",                    # tick tiap 3 bulan
+            dtick="M3",
             tickangle=-30,
             range=[date_range_start, date_range_end + pd.DateOffset(months=1)],
             showgrid=True,
@@ -317,13 +288,7 @@ def plot_monthly_total(
             gridcolor="rgba(0,0,0,0.06)",
             rangemode="tozero",
         ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0,
-        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         height=440,
         margin=dict(t=80, b=60, l=60, r=20),
         hovermode="x unified",
@@ -333,9 +298,7 @@ def plot_monthly_total(
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── Tabel ringkasan per tahun ─────────────────────────────────
     with st.expander("📋 Ringkasan per Tahun", expanded=False):
-
         all_monthly = pd.concat([
             act_monthly.assign(Tipe="Actual"),
             fc_monthly.assign(Tipe="Forecast"),
@@ -350,21 +313,16 @@ def plot_monthly_total(
             .unstack(fill_value=0)
             .reset_index()
         )
-        # Pastikan kolom ada meski salah satu kosong
         for col in ["Actual", "Forecast"]:
             if col not in pivot.columns:
                 pivot[col] = 0
 
-        pivot["Total"] = pivot["Actual"] + pivot["Forecast"]
+        pivot["Total"]    = pivot["Actual"] + pivot["Forecast"]
         pivot["Actual"]   = pivot["Actual"].apply(lambda v: f"{v:,.0f}")
         pivot["Forecast"] = pivot["Forecast"].apply(lambda v: f"{v:,.0f}")
         pivot["Total"]    = pivot["Total"].apply(lambda v: f"{v:,.0f}")
 
-        st.dataframe(
-            pivot.rename(columns={"Tahun": "Tahun"}),
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe(pivot, use_container_width=True, hide_index=True)
 
 
 # =====================================================
@@ -424,73 +382,82 @@ def home():
 def forecasting_page():
     st.title("🔮 Multi Product Forecasting")
 
+    # ── FIX: Gunakan key unik "forecast_uploader" agar tidak bentrok
+    #    dengan widget lain (mis. file_uploader di show_eda) ──────────
     uploaded_file = st.file_uploader(
         "Upload Dataset",
         type=["xlsx", "csv"],
-        key="forecast",
+        key="forecast_uploader",
     )
-
-    uploaded_file = st.file_uploader(
-        "Upload Dataset",
-        type=["xlsx", "csv"],
-        key="forecast",
-    )
-    
-    # ── TEMPORARY DEBUG — hapus setelah masalah selesai ──
-    st.write("DEBUG uploaded_file:", uploaded_file)
-    st.write("DEBUG session keys:", list(st.session_state.keys()))
-    # ─────────────────────────────────────────────────────
-    
-    if uploaded_file is None:
-        st.info("Upload dataset terlebih dahulu")
-        return
 
     if uploaded_file is None:
         st.info("Upload dataset terlebih dahulu")
         return
 
-    # ── Validasi file ─────────────────────────────────────────────
+    # ── Validasi file ─────────────────────────────────────────────────
     ok, err_msg = validate_upload(uploaded_file)
     if not ok:
         st.error(f"❌ File ditolak: {err_msg}")
         audit_log("UPLOAD_REJECTED", err_msg)
         return
 
-    # ── Load data ─────────────────────────────────────────────────
-    if uploaded_file.name.endswith(".xlsx"):
-        raw_df = pd.read_excel(uploaded_file)
-    else:
-        raw_df = pd.read_csv(uploaded_file)
+    # ── Load data ─────────────────────────────────────────────────────
+    try:
+        if uploaded_file.name.endswith(".xlsx"):
+            raw_df = pd.read_excel(uploaded_file)
+        else:
+            raw_df = pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"❌ Gagal membaca file: {e}")
+        audit_log("READ_ERROR", str(e))
+        return
 
-    # ── Validasi DataFrame ────────────────────────────────────────
+    # ── Validasi DataFrame ────────────────────────────────────────────
     ok_df, err_df = validate_dataframe(raw_df)
     if not ok_df:
         st.error(f"❌ Data ditolak: {err_df}")
         audit_log("DATA_REJECTED", err_df)
         return
 
-    # ── Sanitasi PII sebelum diproses ─────────────────────────────
+    # ── Sanitasi PII sebelum diproses ─────────────────────────────────
     raw_df = drop_pii_columns(raw_df)
     audit_log("UPLOAD_OK", f"rows={len(raw_df)} cols={len(raw_df.columns)}")
 
-    df = preprocess_data(raw_df)
+    # ── Preprocessing ─────────────────────────────────────────────────
+    try:
+        df = preprocess_data(raw_df)
+    except Exception as e:
+        st.error(f"❌ Error saat preprocessing: {e}")
+        audit_log("PREPROCESS_ERROR", str(e))
+        return
 
-    # ── Deteksi kolom ─────────────────────────────────────────────
+    # ── Deteksi kolom ─────────────────────────────────────────────────
     col_date, col_sales = detect_columns(df)
-    st.session_state["col_date"] = col_date
-    st.session_state["col_sales"] = col_sales
+    st.session_state["col_date"]   = col_date
+    st.session_state["col_sales"]  = col_sales
     st.session_state["history_df"] = df
 
-    # ── Klasifikasi ───────────────────────────────────────────────
-    classify_df = classify_items(df)
+    # ── Klasifikasi ───────────────────────────────────────────────────
+    try:
+        classify_df = classify_items(df)
+    except Exception as e:
+        st.error(f"❌ Error saat klasifikasi produk: {e}")
+        audit_log("CLASSIFY_ERROR", str(e))
+        return
+
+    if classify_df.empty:
+        st.warning("⚠️ Tidak ada produk yang dapat diklasifikasi. Periksa format data.")
+        return
+
+    st.success(f"✅ {len(classify_df)} produk terdeteksi. Pilih model lalu klik Generate Forecast.")
 
     st.subheader("Model Selection Per Product")
 
     selected_models: dict[str, str] = {}
 
     for _, row in classify_df.iterrows():
-        model_name = row["Model"]
-        category   = row["Category"]
+        model_name      = row["Model"]
+        category        = row["Category"]
         recommendations = RECOMMENDED_MODELS.get(category, ["Random Forest"])
 
         col1, col2, col3 = st.columns([3, 2, 3])
@@ -508,10 +475,10 @@ def forecasting_page():
 
     st.divider()
 
-    periods = st.slider("Forecast Horizon (Month)", 1, 36, 12)
+    periods = st.slider("Forecast Horizon (Month)", 1, 36, 12, key="fc_periods")
 
-    # ── Generate Forecast ─────────────────────────────────────────
-    if st.button("Generate Forecast Semua Produk"):
+    # ── Generate Forecast ─────────────────────────────────────────────
+    if st.button("Generate Forecast Semua Produk", key="btn_generate"):
 
         progress = st.progress(0)
         results  = []
@@ -521,8 +488,13 @@ def forecasting_page():
             item_df = df[df["Model"] == product].copy()
             method  = selected_models[product]
 
-            forecast = forecast_item(item_df, method, periods)
-            mape     = evaluate_model(item_df, method, test_period=12)
+            try:
+                forecast = forecast_item(item_df, method, periods)
+                mape     = evaluate_model(item_df, method, test_period=12)
+            except Exception as e:
+                st.warning(f"⚠️ Gagal forecast {product}: {e}")
+                progress.progress((i + 1) / len(products))
+                continue
 
             if not forecast.empty:
                 forecast["Model"]    = product
@@ -539,7 +511,7 @@ def forecasting_page():
             progress.progress((i + 1) / len(products))
 
         if not results:
-            st.error("Tidak ada hasil forecast")
+            st.error("Tidak ada hasil forecast. Periksa data atau model yang dipilih.")
             return
 
         final_forecast = pd.concat(results, ignore_index=True)
@@ -547,15 +519,13 @@ def forecasting_page():
 
         audit_log(
             "FORECAST_GENERATED",
-            f"products={final_forecast['Model'].nunique()} "
-            f"rows={len(final_forecast)}",
+            f"products={final_forecast['Model'].nunique()} rows={len(final_forecast)}",
         )
 
-        # ── Preview ───────────────────────────────────────────────
+        # ── Preview ───────────────────────────────────────────────────
         st.subheader("Forecast Result")
         safe_dataframe_display(final_forecast, use_container_width=True)
 
-        # ── Summary metrics ───────────────────────────────────────
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Product",        final_forecast["Model"].nunique())
         c2.metric("Total Forecast Sales", f"{final_forecast['Forecast'].sum():,.0f}")
@@ -563,7 +533,6 @@ def forecasting_page():
 
         st.divider()
 
-        # ── Grafik Total Penjualan per Bulan (Actual + Forecast) ──
         plot_monthly_total(
             history_df=df,
             final_forecast=final_forecast,
@@ -573,7 +542,7 @@ def forecasting_page():
 
         st.divider()
 
-        # ── Grafik Forecast vs Actual per produk ──────────────────
+        # ── Grafik per produk ─────────────────────────────────────────
         st.subheader("📊 Grafik Forecast vs Actual per Produk")
 
         fc_date_col = "Forecast Date"
@@ -588,7 +557,6 @@ def forecasting_page():
             st.write("**Semua kolom forecast:**", final_forecast.columns.tolist())
 
         for product in final_forecast["Model"].unique():
-
             act_raw = df[df["Model"] == product][[col_date, col_sales]].copy()
             act_raw = act_raw.rename(columns={col_date: "Date", col_sales: "Nilai"})
             act_raw["Date"] = pd.to_datetime(act_raw["Date"])
@@ -630,7 +598,7 @@ def forecasting_page():
             )
             st.plotly_chart(fig, use_container_width=True)
 
-        # ── Export Excel ──────────────────────────────────────────
+        # ── Export Excel ──────────────────────────────────────────────
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             final_forecast.to_excel(writer, index=False, sheet_name="Forecast")
@@ -640,10 +608,7 @@ def forecasting_page():
             label="📥 Download Forecast Excel",
             data=output,
             file_name="forecast_all_products.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument"
-                ".spreadsheetml.sheet"
-            ),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             action_name="EXPORT_FORECAST",
         )
 
@@ -673,7 +638,6 @@ def mape_page():
     fc_date_col = "Forecast Date"
     fc_val_col  = "Forecast"
 
-    # ── Hitung MAPE per produk ────────────────────────────────────
     mape_rows = []
 
     for product in final_forecast["Model"].unique():
@@ -693,20 +657,17 @@ def mape_page():
 
     mape_df = pd.DataFrame(mape_rows)
 
-    # ── Summary cards ─────────────────────────────────────────────
     valid = mape_df["MAPE (%)"].dropna()
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Rata-rata MAPE",   f"{valid.mean():.2f} %" if len(valid) else "N/A")
-    c2.metric("MAPE Terbaik",     f"{valid.min():.2f} %"  if len(valid) else "N/A")
-    c3.metric("MAPE Terburuk",    f"{valid.max():.2f} %"  if len(valid) else "N/A")
+    c1.metric("Rata-rata MAPE",    f"{valid.mean():.2f} %" if len(valid) else "N/A")
+    c2.metric("MAPE Terbaik",      f"{valid.min():.2f} %"  if len(valid) else "N/A")
+    c3.metric("MAPE Terburuk",     f"{valid.max():.2f} %"  if len(valid) else "N/A")
     c4.metric("Produk Dievaluasi", len(mape_df))
 
     st.divider()
 
-    # ── Tabel MAPE ────────────────────────────────────────────────
     st.subheader("Tabel MAPE per Produk")
-
     safe_dataframe_display(
         mape_df,
         use_container_width=True,
@@ -718,7 +679,6 @@ def mape_page():
 
     st.divider()
 
-    # ── Bar chart MAPE ────────────────────────────────────────────
     st.subheader("📊 Bar Chart MAPE per Produk")
 
     plot_df = mape_df.dropna(subset=["MAPE (%)"]).sort_values("MAPE (%)", ascending=True)
@@ -755,7 +715,6 @@ def mape_page():
 
     st.divider()
 
-    # ── Grafik Forecast vs Actual per produk ─────────────────────
     st.subheader("📈 Forecast vs Actual per Produk")
 
     selected_product = st.selectbox(
@@ -828,7 +787,6 @@ def mape_page():
         )
         st.plotly_chart(fig2, use_container_width=True)
 
-    # ── Export MAPE ───────────────────────────────────────────────
     st.divider()
 
     export_df = mape_df.drop(columns=["_color", ""], errors="ignore")
@@ -841,10 +799,7 @@ def mape_page():
         label="📥 Download MAPE Excel",
         data=output,
         file_name="mape_analysis.xlsx",
-        mime=(
-            "application/vnd.openxmlformats-officedocument"
-            ".spreadsheetml.sheet"
-        ),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         action_name="EXPORT_MAPE",
     )
 
