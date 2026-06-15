@@ -9,7 +9,10 @@ import plotly.graph_objects as go
 from utils.preprocessing import preprocess_data
 from utils.eda import show_eda
 from utils.classification import classify_items
-from utils.forecasting import forecast_item
+from utils.forecasting import (
+    forecast_item,
+    evaluate_model
+)
 from utils.helper import RECOMMENDED_MODELS
 
 
@@ -316,7 +319,19 @@ def forecasting_page():
 
             item_df = df[df["Model"] == product].copy()
             method = selected_models[product]
-            forecast = forecast_item(item_df, method, periods)
+            forecast = forecast_item(
+                item_df,
+                method,
+                periods
+            )
+
+            mape = evaluate_model(
+                item_df,
+                method,
+                test_period=12
+            )
+
+            forecast["MAPE"] = mape
 
             if not forecast.empty:
                 forecast["Model"] = product
@@ -327,6 +342,7 @@ def forecasting_page():
                     ].values[0]
                 )
                 forecast["Method"] = method
+                forecast["MAPE"] = mape
                 results.append(forecast)
 
             progress.progress((i + 1) / len(products))
@@ -495,32 +511,34 @@ def mape_page():
         act["_date_"] = pd.to_datetime(act[col_date])
 
         # Inner join pada tanggal yang sama
-        merged = fc.merge(
-            act[["_date_", col_sales]],
-            on="_date_",
-            how="inner"
-        )
+        mape_val = fc["MAPE"].iloc[0]
 
-        if merged.empty:
-            mape_val = np.nan
-        else:
-            mape_val = calculate_mape(
-                merged[col_sales], merged[fc_val_col]
-            )
+        for product in final_forecast["Model"].unique():
 
+        fc = final_forecast[
+            final_forecast["Model"] == product
+        ]
+    
+        mape_val = fc["MAPE"].iloc[0]
+    
         category = fc["Category"].iloc[0]
         method = fc["Method"].iloc[0]
-
-        mape_rows.append(
-            {
-                "Produk": product,
-                "Kategori": category,
-                "Metode": method,
-                "MAPE (%)": round(mape_val, 2) if not np.isnan(mape_val) else np.nan,
-                "Akurasi": get_mape_label(mape_val),
-                "": mape_color(mape_val),
-            }
-        )
+    
+        mape_rows.append({
+    
+            "Produk": product,
+    
+            "Kategori": category,
+    
+            "Metode": method,
+    
+            "MAPE (%)": round(mape_val, 2),
+    
+            "Akurasi": get_mape_label(mape_val),
+    
+            "": mape_color(mape_val)
+    
+        })
 
     mape_df = pd.DataFrame(mape_rows)
 
