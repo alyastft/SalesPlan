@@ -513,32 +513,41 @@ def mape_page():
         # Inner join pada tanggal yang sama
         mape_val = fc["MAPE"].iloc[0]
 
-        for product in final_forecast["Model"].unique():
+        mape_rows = []
 
-        fc = final_forecast[
-            final_forecast["Model"] == product
-        ]
-    
-        mape_val = fc["MAPE"].iloc[0]
-    
-        category = fc["Category"].iloc[0]
-        method = fc["Method"].iloc[0]
-    
-        mape_rows.append({
-    
-            "Produk": product,
-    
-            "Kategori": category,
-    
-            "Metode": method,
-    
-            "MAPE (%)": round(mape_val, 2),
-    
-            "Akurasi": get_mape_label(mape_val),
-    
-            "": mape_color(mape_val)
-    
-        })
+        for product in final_forecast["Model"].unique():
+        
+            fc = final_forecast[
+                final_forecast["Model"] == product
+            ]
+        
+            mape_val = fc["MAPE"].iloc[0]
+        
+            category = fc["Category"].iloc[0]
+        
+            method = fc["Method"].iloc[0]
+        
+            mape_rows.append({
+        
+                "Produk": product,
+        
+                "Kategori": category,
+        
+                "Metode": method,
+        
+                "MAPE (%)": round(mape_val, 2)
+                if pd.notna(mape_val)
+                else np.nan,
+        
+                "Akurasi": get_mape_label(mape_val)
+                if pd.notna(mape_val)
+                else "N/A",
+        
+                "": mape_color(mape_val)
+                if pd.notna(mape_val)
+                else "⚪"
+        
+            })
 
     mape_df = pd.DataFrame(mape_rows)
 
