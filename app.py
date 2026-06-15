@@ -497,58 +497,25 @@ def mape_page():
     fc_val_col = "Forecast"
 
     # ── HITUNG MAPE PER PRODUK ────────────────────────────────────
-    # Gabungkan forecast dengan data aktual pada periode yang overlap
-    mape_rows = []
-
+    mape_rows = []  # inisialisasi DI LUAR loop
+    
     for product in final_forecast["Model"].unique():
-
-        fc = final_forecast[final_forecast["Model"] == product].copy()
-        fc["_date_"] = pd.to_datetime(fc[fc_date_col])
-
-        act = history_df[history_df["Model"] == product][
-            [col_date, col_sales]
-        ].copy()
-        act["_date_"] = pd.to_datetime(act[col_date])
-
-        # Inner join pada tanggal yang sama
+    
+        fc = final_forecast[final_forecast["Model"] == product]
+    
         mape_val = fc["MAPE"].iloc[0]
-
-        mape_rows = []
-
-        for product in final_forecast["Model"].unique():
-        
-            fc = final_forecast[
-                final_forecast["Model"] == product
-            ]
-        
-            mape_val = fc["MAPE"].iloc[0]
-        
-            category = fc["Category"].iloc[0]
-        
-            method = fc["Method"].iloc[0]
-        
-            mape_rows.append({
-        
-                "Produk": product,
-        
-                "Kategori": category,
-        
-                "Metode": method,
-        
-                "MAPE (%)": round(mape_val, 2)
-                if pd.notna(mape_val)
-                else np.nan,
-        
-                "Akurasi": get_mape_label(mape_val)
-                if pd.notna(mape_val)
-                else "N/A",
-        
-                "": mape_color(mape_val)
-                if pd.notna(mape_val)
-                else "⚪"
-        
-            })
-
+        category = fc["Category"].iloc[0]
+        method   = fc["Method"].iloc[0]
+    
+        mape_rows.append({
+            "Produk"   : product,
+            "Kategori" : category,
+            "Metode"   : method,
+            "MAPE (%)": round(mape_val, 2) if pd.notna(mape_val) else np.nan,
+            "Akurasi"  : get_mape_label(mape_val) if pd.notna(mape_val) else "N/A",
+            ""         : mape_color(mape_val)     if pd.notna(mape_val) else "⚪",
+        })
+    
     mape_df = pd.DataFrame(mape_rows)
 
     # ── SUMMARY CARDS ──────────────────────────────────────────────
