@@ -430,6 +430,21 @@ def forecasting_page():
         key="forecast",
     )
 
+    uploaded_file = st.file_uploader(
+        "Upload Dataset",
+        type=["xlsx", "csv"],
+        key="forecast",
+    )
+    
+    # ── TEMPORARY DEBUG — hapus setelah masalah selesai ──
+    st.write("DEBUG uploaded_file:", uploaded_file)
+    st.write("DEBUG session keys:", list(st.session_state.keys()))
+    # ─────────────────────────────────────────────────────
+    
+    if uploaded_file is None:
+        st.info("Upload dataset terlebih dahulu")
+        return
+
     if uploaded_file is None:
         st.info("Upload dataset terlebih dahulu")
         return
