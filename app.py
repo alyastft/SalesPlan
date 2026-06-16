@@ -33,7 +33,6 @@ st.set_page_config(
     layout="wide",
 )
 
-# ── CSS Styling ──────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     .main-header {
@@ -97,7 +96,6 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     """Deteksi otomatis kolom tanggal dan kolom sales."""
     cols_lower = {c.lower(): c for c in df.columns}
 
-    # Deteksi kolom tanggal
     date_candidates = [
         "ds", "date", "period", "bulan", "month",
         "tanggal", "time", "week", "year_month",
@@ -115,7 +113,6 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     if col_date is None:
         col_date = df.columns[0]
 
-    # Deteksi kolom sales
     sales_candidates = [
         "y", "sales", "qty", "quantity", "penjualan",
         "volume", "amount", "nilai", "demand", "units",
@@ -189,7 +186,6 @@ def plot_monthly_total(
     date_range_start = pd.Timestamp(date_start)
     date_range_end   = pd.Timestamp(date_end)
 
-    # Actual
     act = history_df[[col_date, col_sales]].copy()
     act["Month"] = pd.to_datetime(act[col_date]).dt.to_period("M").dt.to_timestamp()
     act_monthly = (
@@ -203,7 +199,6 @@ def plot_monthly_total(
         & (act_monthly["Month"] <= date_range_end)
     ].sort_values("Month")
 
-    # Forecast
     fc = final_forecast[["Forecast Date", "Forecast"]].copy()
     fc["Month"] = pd.to_datetime(fc["Forecast Date"]).dt.to_period("M").dt.to_timestamp()
     fc_monthly = (
@@ -306,15 +301,13 @@ def plot_monthly_total(
 
 def load_and_normalize_csv(uploaded_file) -> pd.DataFrame | None:
     """
-    Baca CSV, deteksi separator (koma / titik koma / tab),
-    lalu normalisasi kolom ds dan y.
+    Baca CSV, deteksi separator (koma / titik koma / tab).
     Kembalikan None jika gagal.
     """
     try:
         raw_bytes = uploaded_file.read()
-        uploaded_file.seek(0)  # reset pointer
+        uploaded_file.seek(0)
 
-        # Coba deteksi separator
         sample = raw_bytes[:4096].decode("utf-8", errors="replace")
         sep = ","
         if sample.count(";") > sample.count(","):
@@ -330,10 +323,40 @@ def load_and_normalize_csv(uploaded_file) -> pd.DataFrame | None:
         return None
 
 
+# ── Mapping bulan Indonesia → Inggris ────────────────────────────────────────
+_BULAN_ID_MAP: dict[str, str] = {
+    "Mei": "May",
+    "Agu": "Aug",
+    "Okt": "Oct",
+    "Des": "Dec",
+}
+
+
+def _parse_tanggal(value) -> pd.Timestamp:
+    """
+    Parse satu nilai tanggal dengan support format Indonesia.
+    Contoh: 'Jan-21' → 2021-01-01, 'Mei-21' → 2021-05-01, 'Agu-23' → 2023-08-01
+    """
+    s = str(value).strip()
+    for id_name, en_name in _BULAN_ID_MAP.items():
+        s = s.replace(id_name, en_name)
+    try:
+        return pd.to_datetime(s, format="%b-%y")
+    except ValueError:
+        pass
+    try:
+        return pd.to_datetime(s)
+    except Exception:
+        return pd.NaT
+
+
 def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
     """
     Pastikan DataFrame memiliki kolom 'ds' (datetime) dan 'y' (numerik).
-    Deteksi otomatis dari kolom yang ada jika belum bernama ds/y.
+
+    FIX: Support format tanggal Indonesia (Jan-21, Mei-21, Agu-21, Okt-21, Des-21)
+    menggunakan _parse_tanggal() per-elemen, bukan pd.to_datetime() langsung
+    yang tidak bisa mengenali nama bulan Indonesia.
     """
     df = df.copy()
     cols_lower = {c.lower(): c for c in df.columns}
@@ -349,16 +372,11 @@ def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
             if cand in cols_lower:
                 found_date = cols_lower[cand]
                 break
-        # Fallback: kolom datetime pertama
         if found_date is None:
             for c in df.columns:
-                try:
-                    pd.to_datetime(df[c])
+                if pd.api.types.is_datetime64_any_dtype(df[c]):
                     found_date = c
                     break
-                except Exception:
-                    pass
-        # Fallback terakhir: kolom pertama
         if found_date is None:
             found_date = df.columns[0]
 
@@ -366,8 +384,10 @@ def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df = df.rename(columns={cols_lower["ds"]: "ds"})
 
+    # FIX: gunakan _parse_tanggal per-elemen, bukan pd.to_datetime langsung
     if not pd.api.types.is_datetime64_any_dtype(df["ds"]):
         df["ds"] = df["ds"].apply(_parse_tanggal)
+    # Jika sudah datetime, tidak perlu diparse ulang
 
     # ── Kolom sales → y ───────────────────────────────────────────────
     cols_lower2 = {c.lower(): c for c in df.columns}
@@ -421,7 +441,7 @@ def home():
             <div class="card-title">📊 Data Analysis</div>
             <ul>
                 <li>Upload dataset CSV penjualan</li>
-                <li>Preview & Exploratory Data Analysis (EDA)</li>
+                <li>Preview &amp; Exploratory Data Analysis (EDA)</li>
                 <li>Analisis tren penjualan</li>
                 <li>Klasifikasi produk: Stable, Declining, Volatile, Intermittent, Discontinued</li>
             </ul>
@@ -464,6 +484,9 @@ def home():
                 <li><code>y</code> atau <code>sales/qty/penjualan</code> — kolom nilai</li>
                 <li><code>Model</code> — nama/kode produk (opsional, jika multi-produk)</li>
             </ul>
+            <p style="color:#64748b;font-size:0.88rem;margin-top:0.5rem">
+            ✅ Support format tanggal Indonesia: Jan-21, Mei-21, Agu-21, Okt-21, Des-21
+            </p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -471,7 +494,7 @@ def home():
 
 
 # =====================================================
-# FORECAST PAGE  (FIXED)
+# FORECAST PAGE
 # =====================================================
 
 def forecasting_page():
@@ -482,7 +505,6 @@ def forecasting_page():
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Upload CSV ────────────────────────────────────────────────────
     uploaded_file = st.file_uploader(
         "Upload Dataset (CSV)",
         type=["csv"],
@@ -500,32 +522,27 @@ def forecasting_page():
 ds,y
 2022-01-01,150
 2022-02-01,170
-2022-03-01,140
 ```
 
-**Format 2 — Multi product:**
+**Format 2 — Multi product (format Indonesia):**
 ```
-ds,Model,KYB No,y
-2022-01-01,ProductA,KB001,150
-2022-01-01,ProductB,KB002,200
-2022-02-01,ProductA,KB001,170
+Model,KYB No,Date,Year,Sales
+YAMAHA ABC,12200-xxx,Jan-21,2021,2600
+YAMAHA ABC,12200-xxx,Mei-21,2021,3100
 ```
 """)
         return
 
-    # ── Validasi upload ───────────────────────────────────────────────
     ok, err_msg = validate_upload(uploaded_file)
     if not ok:
         st.error(f"❌ File ditolak: {err_msg}")
         audit_log("UPLOAD_REJECTED", err_msg)
         return
 
-    # ── Baca CSV ──────────────────────────────────────────────────────
     raw_df = load_and_normalize_csv(uploaded_file)
     if raw_df is None:
         return
 
-    # ── Validasi DataFrame ────────────────────────────────────────────
     ok_df, err_df = validate_dataframe(raw_df)
     if not ok_df:
         st.error(f"❌ Data ditolak: {err_df}")
@@ -535,20 +552,20 @@ ds,Model,KYB No,y
     raw_df = drop_pii_columns(raw_df)
     audit_log("UPLOAD_OK", f"rows={len(raw_df)} cols={len(raw_df.columns)}")
 
-    # ── Normalisasi kolom ds / y ──────────────────────────────────────
     try:
         raw_df = normalize_to_ds_y(raw_df)
     except Exception as e:
         st.error(f"❌ Gagal normalisasi kolom: {e}")
         return
 
-    # ── Info kolom ────────────────────────────────────────────────────
     with st.expander("🔍 Pratinjau Data & Kolom Terdeteksi", expanded=False):
         st.write(f"**Kolom dalam file:** {raw_df.columns.tolist()}")
         st.write(f"**Jumlah baris:** {len(raw_df):,}")
+        nat_count = raw_df["ds"].isna().sum()
+        if nat_count > 0:
+            st.warning(f"⚠️ {nat_count} baris dengan tanggal tidak valid (akan dibuang)")
         st.dataframe(raw_df.head(10), use_container_width=True)
 
-    # ── Preprocessing ─────────────────────────────────────────────────
     try:
         df = preprocess_data(raw_df)
     except Exception as e:
@@ -556,7 +573,6 @@ ds,Model,KYB No,y
         audit_log("PREPROCESS_ERROR", str(e))
         return
 
-    # ── Pastikan kolom ds & y tersedia setelah preprocessing ──────────
     if "ds" not in df.columns or "y" not in df.columns:
         st.error(
             "❌ Setelah preprocessing, kolom `ds` atau `y` tidak ditemukan. "
@@ -564,20 +580,16 @@ ds,Model,KYB No,y
         )
         return
 
-    # ── Deteksi kolom untuk tampilan ──────────────────────────────────
     col_date  = "ds"
     col_sales = "y"
     st.session_state["col_date"]   = col_date
     st.session_state["col_sales"]  = col_sales
     st.session_state["history_df"] = df
 
-    # ── Pastikan kolom Model ada ──────────────────────────────────────
     if "Model" not in df.columns:
-        # Beri nama default jika single-product
         df["Model"] = "Product"
         st.session_state["history_df"] = df
 
-    # ── Klasifikasi ───────────────────────────────────────────────────
     try:
         classify_df = classify_items(df)
     except Exception as e:
@@ -586,15 +598,11 @@ ds,Model,KYB No,y
         return
 
     if classify_df.empty:
-        st.warning(
-            "⚠️ Tidak ada produk yang dapat diklasifikasi. "
-            "Pastikan kolom `ds` bertipe tanggal dan `y` bertipe numerik."
-        )
+        st.warning("⚠️ Tidak ada produk yang dapat diklasifikasi.")
         return
 
     st.success(f"✅ **{len(classify_df)} produk** terdeteksi. Pilih model lalu klik Generate Forecast.")
 
-    # ── Pilih model per produk ────────────────────────────────────────
     st.subheader("🎛️ Pilih Model per Produk")
 
     selected_models: dict[str, str] = {}
@@ -623,10 +631,9 @@ ds,Model,KYB No,y
     st.divider()
     periods = st.slider("📅 Forecast Horizon (Bulan)", 1, 36, 12, key="fc_periods")
 
-    # ── Generate Forecast ─────────────────────────────────────────────
     if st.button("🚀 Generate Forecast Semua Produk", key="btn_generate", type="primary"):
 
-        progress_bar  = st.progress(0, text="Memulai proses forecasting...")
+        progress_bar       = st.progress(0, text="Memulai proses forecasting...")
         status_placeholder = st.empty()
         results  = []
         products = classify_df["Model"].tolist()
@@ -637,7 +644,6 @@ ds,Model,KYB No,y
             item_df = df[df["Model"] == product].copy()
             method  = selected_models.get(product, "Random Forest")
 
-            # Pastikan item_df punya ds & y
             if "ds" not in item_df.columns or "y" not in item_df.columns:
                 st.warning(f"⚠️ Lewati {product}: kolom ds/y tidak ditemukan.")
                 progress_bar.progress((i + 1) / len(products))
@@ -693,18 +699,16 @@ ds,Model,KYB No,y
 
         st.success(f"✅ Forecast berhasil untuk **{final_forecast['Model'].nunique()}** produk!")
 
-        # ── Preview tabel ─────────────────────────────────────────────
         st.subheader("📋 Hasil Forecast")
         safe_dataframe_display(final_forecast, use_container_width=True)
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Produk",        final_forecast["Model"].nunique())
+        c1.metric("Total Produk",         final_forecast["Model"].nunique())
         c2.metric("Total Forecast Sales", f"{final_forecast['Forecast'].sum():,.0f}")
         c3.metric("Total Baris",          len(final_forecast))
 
         st.divider()
 
-        # ── Grafik total bulanan ──────────────────────────────────────
         plot_monthly_total(
             history_df=df,
             final_forecast=final_forecast,
@@ -714,7 +718,6 @@ ds,Model,KYB No,y
 
         st.divider()
 
-        # ── Grafik per produk ─────────────────────────────────────────
         st.subheader("📊 Grafik Forecast vs Actual per Produk")
 
         for product in final_forecast["Model"].unique():
@@ -756,7 +759,6 @@ ds,Model,KYB No,y
             )
             st.plotly_chart(fig, use_container_width=True)
 
-        # ── Export CSV ────────────────────────────────────────────────
         st.divider()
         csv_bytes = final_forecast.to_csv(index=False).encode("utf-8")
         secure_download_button(
@@ -800,7 +802,6 @@ def mape_page():
     fc_date_col = "Forecast Date"
     fc_val_col  = "Forecast"
 
-    # ── Susun tabel MAPE ──────────────────────────────────────────────
     mape_rows = []
     for product in final_forecast["Model"].unique():
         fc       = final_forecast[final_forecast["Model"] == product]
@@ -820,7 +821,6 @@ def mape_page():
     mape_df = pd.DataFrame(mape_rows)
     valid   = mape_df["MAPE (%)"].dropna()
 
-    # ── Ringkasan ─────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Rata-rata MAPE",    f"{valid.mean():.2f} %" if len(valid) else "N/A")
     c2.metric("MAPE Terbaik",      f"{valid.min():.2f} %"  if len(valid) else "N/A")
@@ -829,7 +829,6 @@ def mape_page():
 
     st.divider()
 
-    # ── Tabel ─────────────────────────────────────────────────────────
     st.subheader("📋 Tabel MAPE per Produk")
     safe_dataframe_display(
         mape_df,
@@ -842,7 +841,6 @@ def mape_page():
 
     st.divider()
 
-    # ── Bar Chart ─────────────────────────────────────────────────────
     st.subheader("📊 Bar Chart MAPE per Produk")
     plot_df = mape_df.dropna(subset=["MAPE (%)"]).sort_values("MAPE (%)", ascending=True)
 
@@ -878,7 +876,6 @@ def mape_page():
 
     st.divider()
 
-    # ── Grafik per produk ─────────────────────────────────────────────
     st.subheader("📈 Forecast vs Actual per Produk")
     selected_product = st.selectbox(
         "Pilih Produk",
@@ -938,7 +935,6 @@ def mape_page():
 
     st.divider()
 
-    # ── Export CSV ────────────────────────────────────────────────────
     export_df  = mape_df.drop(columns=["_color", "Status"], errors="ignore")
     csv_bytes  = export_df.to_csv(index=False).encode("utf-8")
     secure_download_button(
@@ -950,7 +946,9 @@ def mape_page():
     )
 
 
+# =====================================================
 # SIDEBAR NAVIGATION
+# =====================================================
 
 st.sidebar.title("📈 Navigation")
 
@@ -961,8 +959,9 @@ page = st.sidebar.radio(
 
 render_security_sidebar()
 
-
+# =====================================================
 # ROUTER
+# =====================================================
 
 if page == "Home":
     home()
