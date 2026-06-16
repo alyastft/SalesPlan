@@ -1,18 +1,100 @@
-"""
-utils/preprocessing.py
-======================
-Preprocessing dataset untuk forecasting.
-
-Asumsi input: DataFrame sudah memiliki kolom 'ds' (tanggal) dan 'y' (numerik)
-setelah dinormalisasi oleh normalize_to_ds_y() di app.py.
-
-Jika kolom 'Model' tidak ada, akan dibuat dengan nilai default 'Product'.
-"""
-
 from __future__ import annotations
 
 import pandas as pd
 import numpy as np
+import warnings
+
+# ── Mapping nama bulan Indonesia → Inggris ────────────────────────────────────
+_BULAN_ID: dict[str, str] = {
+    "Mei": "May",
+    "Agu": "Aug",
+    "Okt": "Oct",
+    "Des": "Dec",
+}
+
+# Kandidat nama kolom tanggal & sales (case-insensitive)
+_DATE_CANDIDATES  = ["ds", "date", "tanggal", "bulan", "month", "period", "time", "periode"]
+_SALES_CANDIDATES = ["y", "sales", "qty", "penjualan", "demand", "volume", "jumlah", "amount"]
+
+
+def _parse_date_id(value: str) -> pd.Timestamp:
+    """
+    Parse tanggal dengan format fleksibel, termasuk format Indonesia.
+
+    Contoh yang didukung:
+    - 'Jan-21'  → 2021-01-01
+    - 'Mei-21'  → 2021-05-01
+    - 'Agu-23'  → 2023-08-01
+    - '2021-01-01', '01/2021', dst.
+    """
+    s = str(value).strip()
+    for id_name, en_name in _BULAN_ID.items():
+        s = s.replace(id_name, en_name)
+    try:
+        # Format MMM-YY yang paling umum di dataset ini
+        return pd.to_datetime(s, format="%b-%y")
+    except ValueError:
+        pass
+    try:
+        return pd.to_datetime(s)
+    except Exception:
+        return pd.NaT
+
+
+def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalisasi kolom DataFrame ke nama standar 'ds' dan 'y'.
+
+    - Deteksi kolom tanggal dari _DATE_CANDIDATES (case-insensitive)
+    - Deteksi kolom sales/qty dari _SALES_CANDIDATES
+    - Jika kolom sudah bernama 'ds'/'y', tidak ada perubahan
+    - Jika ditemukan kolom lain, rename & parse
+
+    Returns DataFrame dengan kolom 'ds' (Timestamp) dan 'y' (float),
+    plus kolom lainnya dipertahankan.
+    """
+    df = df.copy()
+    cols_lower = {c.lower(): c for c in df.columns}
+
+    # ── Kolom tanggal ─────────────────────────────────────────────────
+    if "ds" not in df.columns:
+        found_date = None
+        for cand in _DATE_CANDIDATES:
+            if cand in cols_lower:
+                found_date = cols_lower[cand]
+                break
+        if found_date is None:
+            raise ValueError(
+                "Kolom tanggal tidak ditemukan. "
+                f"Kolom yang dicari: {_DATE_CANDIDATES}. "
+                f"Kolom tersedia: {list(df.columns)}"
+            )
+        df = df.rename(columns={found_date: "ds"})
+
+    # ── Parse tanggal (termasuk format Indonesia) ─────────────────────
+    if df["ds"].dtype == object or str(df["ds"].dtype).startswith("string"):
+        df["ds"] = df["ds"].apply(_parse_date_id)
+    else:
+        df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
+
+    # ── Kolom sales ───────────────────────────────────────────────────
+    if "y" not in df.columns:
+        found_sales = None
+        for cand in _SALES_CANDIDATES:
+            if cand in cols_lower:
+                found_sales = cols_lower[cand]
+                break
+        if found_sales is None:
+            raise ValueError(
+                "Kolom penjualan tidak ditemukan. "
+                f"Kolom yang dicari: {_SALES_CANDIDATES}. "
+                f"Kolom tersedia: {list(df.columns)}"
+            )
+        df = df.rename(columns={found_sales: "y"})
+
+    df["y"] = pd.to_numeric(df["y"], errors="coerce")
+
+    return df
 
 
 def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -20,6 +102,7 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     Preprocessing lengkap sebelum klasifikasi & forecasting.
 
     Langkah:
+    0. Normalisasi nama kolom (ds, y) — BARU: handle format tanggal Indonesia
     1. Pastikan kolom ds & y ada
     2. Parse ds ke datetime, y ke numerik
     3. Hapus baris dengan ds atau y NaN
@@ -28,12 +111,10 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     6. Isi gap tanggal yang hilang dengan 0
     7. Reset index
 
-    Returns
-    -------
-    DataFrame dengan kolom minimal: ds, y, Model
+    Returns DataFrame dengan kolom minimal: ds, y, Model
     """
-
-    df = df.copy()
+    # ── 0. Normalisasi kolom ───────────────────────────────────────────
+    df = normalize_to_ds_y(df)
 
     # ── 1. Pastikan kolom wajib ada ───────────────────────────────────
     if "ds" not in df.columns:
@@ -54,11 +135,10 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     df["y"]  = pd.to_numeric(df["y"], errors="coerce")
 
     # ── 3. Buang baris invalid ────────────────────────────────────────
-    n_before = len(df)
-    df = df.dropna(subset=["ds", "y"])
+    n_before  = len(df)
+    df        = df.dropna(subset=["ds", "y"])
     n_dropped = n_before - len(df)
     if n_dropped > 0:
-        import warnings
         warnings.warn(
             f"preprocess_data: {n_dropped} baris dibuang karena ds/y tidak valid.",
             stacklevel=2,
@@ -80,13 +160,8 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     df["ds"] = df["ds"].dt.to_period("M").dt.to_timestamp()
 
     # ── 6. Resample: jumlahkan y per (Model, ds) ─────────────────────
-    #       Pertahankan kolom tambahan lain (KYB No, Category, dst.)
-    extra_cols = [
-        c for c in df.columns
-        if c not in {"ds", "y", "Model"}
-    ]
+    extra_cols = [c for c in df.columns if c not in {"ds", "y", "Model"}]
 
-    # Ambil nilai representatif untuk kolom extra (first per group)
     if extra_cols:
         extra_df = (
             df.groupby(["Model", "ds"])[extra_cols]
@@ -107,20 +182,16 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     filled_parts = []
 
     for model_name, grp in agg_df.groupby("Model"):
-        grp = grp.sort_values("ds").set_index("ds")
-
-        # Full date range
+        grp      = grp.sort_values("ds").set_index("ds")
         full_idx = pd.date_range(
             start=grp.index.min(),
             end=grp.index.max(),
             freq="MS",
         )
-
-        grp = grp.reindex(full_idx)
-        grp["y"] = grp["y"].fillna(0)
+        grp       = grp.reindex(full_idx)
+        grp["y"]  = grp["y"].fillna(0)
         grp["Model"] = model_name
 
-        # Isi kolom extra yang kosong
         for col in extra_cols:
             if col in grp.columns:
                 grp[col] = grp[col].ffill().bfill()
