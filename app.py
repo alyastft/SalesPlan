@@ -83,9 +83,26 @@ enforce_state_whitelist()
 # SESSION STATE INIT
 # =====================================================
 
-for key in ["final_forecast", "history_df", "col_date", "col_sales"]:
+# FIX: Perluas session state keys yang dipersist agar data tidak hilang
+# saat Streamlit rerender setelah button click
+_SESSION_KEYS = [
+    "final_forecast",   # hasil forecast
+    "history_df",       # DataFrame setelah preprocess
+    "classify_df",      # hasil klasifikasi produk
+    "col_date",         # nama kolom tanggal
+    "col_sales",        # nama kolom sales
+    "forecast_ready",   # flag: apakah forecast sudah selesai
+    "selected_models",  # model yang dipilih user per produk
+    "periods",          # forecast horizon
+]
+
+for key in _SESSION_KEYS:
     if key not in st.session_state:
         st.session_state[key] = None
+
+# Flag default
+if st.session_state["forecast_ready"] is None:
+    st.session_state["forecast_ready"] = False
 
 
 # =====================================================
@@ -93,7 +110,6 @@ for key in ["final_forecast", "history_df", "col_date", "col_sales"]:
 # =====================================================
 
 def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
-    """Deteksi otomatis kolom tanggal dan kolom sales."""
     cols_lower = {c.lower(): c for c in df.columns}
 
     date_candidates = [
@@ -300,10 +316,6 @@ def plot_monthly_total(
 # =====================================================
 
 def load_and_normalize_csv(uploaded_file) -> pd.DataFrame | None:
-    """
-    Baca CSV, deteksi separator (koma / titik koma / tab).
-    Kembalikan None jika gagal.
-    """
     try:
         raw_bytes = uploaded_file.read()
         uploaded_file.seek(0)
@@ -323,7 +335,6 @@ def load_and_normalize_csv(uploaded_file) -> pd.DataFrame | None:
         return None
 
 
-# ── Mapping bulan Indonesia → Inggris ────────────────────────────────────────
 _BULAN_ID_MAP: dict[str, str] = {
     "Mei": "May",
     "Agu": "Aug",
@@ -333,10 +344,6 @@ _BULAN_ID_MAP: dict[str, str] = {
 
 
 def _parse_tanggal(value) -> pd.Timestamp:
-    """
-    Parse satu nilai tanggal dengan support format Indonesia.
-    Contoh: 'Jan-21' → 2021-01-01, 'Mei-21' → 2021-05-01, 'Agu-23' → 2023-08-01
-    """
     s = str(value).strip()
     for id_name, en_name in _BULAN_ID_MAP.items():
         s = s.replace(id_name, en_name)
@@ -351,17 +358,9 @@ def _parse_tanggal(value) -> pd.Timestamp:
 
 
 def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Pastikan DataFrame memiliki kolom 'ds' (datetime) dan 'y' (numerik).
-
-    FIX: Support format tanggal Indonesia (Jan-21, Mei-21, Agu-21, Okt-21, Des-21)
-    menggunakan _parse_tanggal() per-elemen, bukan pd.to_datetime() langsung
-    yang tidak bisa mengenali nama bulan Indonesia.
-    """
     df = df.copy()
     cols_lower = {c.lower(): c for c in df.columns}
 
-    # ── Kolom tanggal → ds ────────────────────────────────────────────
     if "ds" not in cols_lower:
         date_candidates = [
             "date", "period", "bulan", "month", "tanggal",
@@ -384,12 +383,9 @@ def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df = df.rename(columns={cols_lower["ds"]: "ds"})
 
-    # FIX: gunakan _parse_tanggal per-elemen, bukan pd.to_datetime langsung
     if not pd.api.types.is_datetime64_any_dtype(df["ds"]):
         df["ds"] = df["ds"].apply(_parse_tanggal)
-    # Jika sudah datetime, tidak perlu diparse ulang
 
-    # ── Kolom sales → y ───────────────────────────────────────────────
     cols_lower2 = {c.lower(): c for c in df.columns}
     if "y" not in cols_lower2:
         sales_candidates = [
@@ -419,6 +415,106 @@ def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
     df["y"] = pd.to_numeric(df["y"], errors="coerce").fillna(0)
 
     return df
+
+
+# =====================================================
+# HELPER: TAMPILKAN HASIL FORECAST (dipanggil terpisah)
+# =====================================================
+
+def _render_forecast_results(
+    final_forecast: pd.DataFrame,
+    df: pd.DataFrame,
+    col_date: str,
+    col_sales: str,
+) -> None:
+    """
+    FIX UTAMA: Render hasil forecast dipisah dari blok st.button()
+    agar tetap tampil setelah Streamlit rerender.
+    """
+    st.success(f"✅ Forecast berhasil untuk **{final_forecast['Model'].nunique()}** produk!")
+
+    st.subheader("📋 Hasil Forecast")
+    safe_dataframe_display(final_forecast, use_container_width=True)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Produk",         final_forecast["Model"].nunique())
+    c2.metric("Total Forecast Sales", f"{final_forecast['Forecast'].sum():,.0f}")
+    c3.metric("Total Baris",          len(final_forecast))
+
+    st.divider()
+
+    plot_monthly_total(
+        history_df=df,
+        final_forecast=final_forecast,
+        col_date=col_date,
+        col_sales=col_sales,
+    )
+
+    st.divider()
+
+    st.subheader("📊 Grafik Forecast vs Actual per Produk")
+
+    for product in final_forecast["Model"].unique():
+        act_raw = df[df["Model"] == product][["ds", "y"]].copy()
+        act_raw["ds"] = pd.to_datetime(act_raw["ds"])
+
+        fc_raw = final_forecast[final_forecast["Model"] == product][
+            ["Forecast Date", "Forecast"]
+        ].copy()
+        fc_raw["Forecast Date"] = pd.to_datetime(fc_raw["Forecast Date"])
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=act_raw["ds"], y=act_raw["y"],
+            mode="lines+markers", name="Actual",
+            line=dict(color="#4C9BE8", width=2), marker=dict(size=4),
+            hovertemplate="<b>%{x|%b %Y}</b><br>Actual: %{y:,.0f}<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=fc_raw["Forecast Date"], y=fc_raw["Forecast"],
+            mode="lines+markers", name="Forecast",
+            line=dict(color="#F97316", width=2, dash="dash"), marker=dict(size=4),
+            hovertemplate="<b>%{x|%b %Y}</b><br>Forecast: %{y:,.0f}<extra></extra>",
+        ))
+        if not act_raw.empty and not fc_raw.empty:
+            fig.add_vline(
+                x=act_raw["ds"].max(),
+                line_dash="dot", line_color="gray",
+                annotation_text="Forecast Start",
+                annotation_position="top right",
+            )
+        fig.update_layout(
+            title=f"📦 {product}",
+            xaxis_title="Tanggal", yaxis_title="Sales / Qty",
+            legend=dict(orientation="h", y=1.12),
+            height=350, margin=dict(t=60, b=40, l=40, r=20),
+            hovermode="x unified",
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+
+    # Tombol reset & download
+    col_dl, col_rst = st.columns([3, 1])
+    with col_dl:
+        csv_bytes = final_forecast.to_csv(index=False).encode("utf-8")
+        secure_download_button(
+            label="📥 Download Forecast (CSV)",
+            data=csv_bytes,
+            file_name="forecast_all_products.csv",
+            mime="text/csv",
+            action_name="EXPORT_FORECAST",
+        )
+    with col_rst:
+        if st.button("🔄 Upload Data Baru", key="btn_reset_forecast"):
+            # FIX: Reset semua state terkait forecast agar bisa upload ulang
+            for k in ["final_forecast", "history_df", "classify_df",
+                      "col_date", "col_sales", "forecast_ready",
+                      "selected_models", "periods"]:
+                st.session_state[k] = None
+            st.session_state["forecast_ready"] = False
+            st.rerun()
 
 
 # =====================================================
@@ -505,6 +601,21 @@ def forecasting_page():
     </div>
     """, unsafe_allow_html=True)
 
+    # ── FIX: Jika forecast sudah ada di session state, langsung render ──────
+    # Ini memastikan hasil tetap tampil setelah Streamlit rerender
+    if st.session_state.get("forecast_ready") and \
+       st.session_state.get("final_forecast") is not None and \
+       st.session_state.get("history_df") is not None:
+
+        final_forecast = st.session_state["final_forecast"]
+        df             = st.session_state["history_df"]
+        col_date       = st.session_state["col_date"] or "ds"
+        col_sales      = st.session_state["col_sales"] or "y"
+
+        _render_forecast_results(final_forecast, df, col_date, col_sales)
+        return  # Sudah tampil, tidak perlu lanjut ke form upload
+
+    # ── Belum ada forecast: tampilkan form upload & konfigurasi ─────────────
     uploaded_file = st.file_uploader(
         "Upload Dataset (CSV)",
         type=["csv"],
@@ -533,6 +644,7 @@ YAMAHA ABC,12200-xxx,Mei-21,2021,3100
 """)
         return
 
+    # ── Validasi & baca file ─────────────────────────────────────────────────
     ok, err_msg = validate_upload(uploaded_file)
     if not ok:
         st.error(f"❌ File ditolak: {err_msg}")
@@ -582,6 +694,8 @@ YAMAHA ABC,12200-xxx,Mei-21,2021,3100
 
     col_date  = "ds"
     col_sales = "y"
+
+    # FIX: Simpan ke session_state di sini, bukan setelah forecast selesai
     st.session_state["col_date"]   = col_date
     st.session_state["col_sales"]  = col_sales
     st.session_state["history_df"] = df
@@ -592,6 +706,7 @@ YAMAHA ABC,12200-xxx,Mei-21,2021,3100
 
     try:
         classify_df = classify_items(df)
+        st.session_state["classify_df"] = classify_df  # FIX: simpan ke session_state
     except Exception as e:
         st.error(f"❌ Error saat klasifikasi produk: {e}")
         audit_log("CLASSIFY_ERROR", str(e))
@@ -684,90 +799,29 @@ YAMAHA ABC,12200-xxx,Mei-21,2021,3100
             progress_bar.progress((i + 1) / len(products), text=f"Selesai: {product}")
 
         status_placeholder.empty()
+        progress_bar.empty()  # FIX: hapus progress bar agar layout bersih
 
         if not results:
             st.error("❌ Tidak ada hasil forecast. Periksa format data atau pilih model lain.")
             return
 
         final_forecast = pd.concat(results, ignore_index=True)
+
+        # FIX UTAMA: Simpan hasil & set flag SEBELUM rerun
+        # Ini memastikan data tersedia saat halaman dirender ulang
         st.session_state["final_forecast"] = final_forecast
+        st.session_state["forecast_ready"] = True
+        st.session_state["periods"]         = periods
+        st.session_state["selected_models"] = selected_models
 
         audit_log(
             "FORECAST_GENERATED",
             f"products={final_forecast['Model'].nunique()} rows={len(final_forecast)}",
         )
 
-        st.success(f"✅ Forecast berhasil untuk **{final_forecast['Model'].nunique()}** produk!")
-
-        st.subheader("📋 Hasil Forecast")
-        safe_dataframe_display(final_forecast, use_container_width=True)
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Produk",         final_forecast["Model"].nunique())
-        c2.metric("Total Forecast Sales", f"{final_forecast['Forecast'].sum():,.0f}")
-        c3.metric("Total Baris",          len(final_forecast))
-
-        st.divider()
-
-        plot_monthly_total(
-            history_df=df,
-            final_forecast=final_forecast,
-            col_date=col_date,
-            col_sales=col_sales,
-        )
-
-        st.divider()
-
-        st.subheader("📊 Grafik Forecast vs Actual per Produk")
-
-        for product in final_forecast["Model"].unique():
-            act_raw = df[df["Model"] == product][["ds", "y"]].copy()
-            act_raw["ds"] = pd.to_datetime(act_raw["ds"])
-
-            fc_raw = final_forecast[final_forecast["Model"] == product][
-                ["Forecast Date", "Forecast"]
-            ].copy()
-            fc_raw["Forecast Date"] = pd.to_datetime(fc_raw["Forecast Date"])
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=act_raw["ds"], y=act_raw["y"],
-                mode="lines+markers", name="Actual",
-                line=dict(color="#4C9BE8", width=2), marker=dict(size=4),
-                hovertemplate="<b>%{x|%b %Y}</b><br>Actual: %{y:,.0f}<extra></extra>",
-            ))
-            fig.add_trace(go.Scatter(
-                x=fc_raw["Forecast Date"], y=fc_raw["Forecast"],
-                mode="lines+markers", name="Forecast",
-                line=dict(color="#F97316", width=2, dash="dash"), marker=dict(size=4),
-                hovertemplate="<b>%{x|%b %Y}</b><br>Forecast: %{y:,.0f}<extra></extra>",
-            ))
-            if not act_raw.empty and not fc_raw.empty:
-                fig.add_vline(
-                    x=act_raw["ds"].max(),
-                    line_dash="dot", line_color="gray",
-                    annotation_text="Forecast Start",
-                    annotation_position="top right",
-                )
-            fig.update_layout(
-                title=f"📦 {product}",
-                xaxis_title="Tanggal", yaxis_title="Sales / Qty",
-                legend=dict(orientation="h", y=1.12),
-                height=350, margin=dict(t=60, b=40, l=40, r=20),
-                hovermode="x unified",
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-        st.divider()
-        csv_bytes = final_forecast.to_csv(index=False).encode("utf-8")
-        secure_download_button(
-            label="📥 Download Forecast (CSV)",
-            data=csv_bytes,
-            file_name="forecast_all_products.csv",
-            mime="text/csv",
-            action_name="EXPORT_FORECAST",
-        )
+        # FIX: Rerun agar halaman dirender ulang dari atas
+        # dan blok "forecast_ready" di awal fungsi menampilkan hasilnya
+        st.rerun()
 
 
 # =====================================================
