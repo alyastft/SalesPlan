@@ -8,10 +8,7 @@ import plotly.graph_objects as go
 from utils.preprocessing import preprocess_data
 from utils.eda import show_eda
 from utils.classification import classify_items
-from utils.forecasting import (
-    forecast_item,
-    evaluate_model,
-)
+from utils.forecasting import forecast_item, evaluate_model
 from utils.helper import RECOMMENDED_MODELS
 from utils.security import (
     init_session,
@@ -26,10 +23,7 @@ from utils.security import (
     audit_log,
 )
 
-
-# =====================================================
 # PAGE CONFIG
-# =====================================================
 
 st.set_page_config(
     page_title="Sales Forecasting Dashboard",
@@ -37,10 +31,42 @@ st.set_page_config(
     layout="wide",
 )
 
+# CSS Styling
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+        padding: 1.5rem 2rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        color: white;
+    }
+    .main-header h1 { color: white; margin: 0; font-size: 2rem; }
+    .main-header p  { color: rgba(255,255,255,0.8); margin: 0.25rem 0 0; }
 
-# =====================================================
+    .card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1rem;
+    }
+    .card-title { font-weight: 700; color: #1e3a5f; margin-bottom: 0.5rem; }
+
+    .status-ok   { color: #16a34a; font-weight: 600; }
+    .status-warn { color: #d97706; font-weight: 600; }
+    .status-err  { color: #dc2626; font-weight: 600; }
+
+    .stProgress > div > div { background: #2d6a9f !important; }
+
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # SECURITY INIT
-# =====================================================
 
 init_session()
 
@@ -50,31 +76,20 @@ if check_session_expiry():
 
 enforce_state_whitelist()
 
-
-# =====================================================
 # SESSION STATE INIT
-# =====================================================
 
-if "final_forecast" not in st.session_state:
-    st.session_state["final_forecast"] = None
-
-if "history_df" not in st.session_state:
-    st.session_state["history_df"] = None
-
-if "col_date" not in st.session_state:
-    st.session_state["col_date"] = None
-
-if "col_sales" not in st.session_state:
-    st.session_state["col_sales"] = None
+for key in ["final_forecast", "history_df", "col_date", "col_sales"]:
+    if key not in st.session_state:
+        st.session_state[key] = None
 
 
-# =====================================================
 # HELPER: AUTO-DETECT COLUMN NAMES
-# =====================================================
 
 def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
+    """Deteksi otomatis kolom tanggal dan kolom sales."""
     cols_lower = {c.lower(): c for c in df.columns}
 
+    # Deteksi kolom tanggal
     date_candidates = [
         "ds", "date", "period", "bulan", "month",
         "tanggal", "time", "week", "year_month",
@@ -92,6 +107,7 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     if col_date is None:
         col_date = df.columns[0]
 
+    # Deteksi kolom sales
     sales_candidates = [
         "y", "sales", "qty", "quantity", "penjualan",
         "volume", "amount", "nilai", "demand", "units",
@@ -115,32 +131,13 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     return col_date, col_sales
 
 
-def detect_forecast_col(df: pd.DataFrame) -> str:
-    candidates = ["forecast", "prediction", "prediksi", "yhat", "pred", "value"]
-    cols_lower = {c.lower(): c for c in df.columns}
-    for cand in candidates:
-        if cand in cols_lower:
-            return cols_lower[cand]
-    skip = {"model", "kyb no", "category", "method"}
-    for c in df.columns:
-        if c.lower() in skip:
-            continue
-        if pd.api.types.is_numeric_dtype(df[c]):
-            return c
-    return df.columns[-1]
-
-
-# =====================================================
 # HELPER: MAPE
-# =====================================================
 
 def calculate_mape(actual: pd.Series, predicted: pd.Series) -> float:
     mask = actual != 0
     if mask.sum() == 0:
         return np.nan
-    return np.mean(
-        np.abs((actual[mask] - predicted[mask]) / actual[mask])
-    ) * 100
+    return np.mean(np.abs((actual[mask] - predicted[mask]) / actual[mask])) * 100
 
 
 def get_mape_label(mape: float) -> str:
@@ -165,9 +162,7 @@ def mape_color(mape: float) -> str:
     }[get_mape_label(mape)]
 
 
-# =====================================================
-# HELPER: GRAFIK TOTAL BULANAN ACTUAL + FORECAST
-# =====================================================
+# HELPER: GRAFIK TOTAL BULANAN
 
 def plot_monthly_total(
     history_df: pd.DataFrame,
@@ -182,6 +177,7 @@ def plot_monthly_total(
     date_range_start = pd.Timestamp(date_start)
     date_range_end   = pd.Timestamp(date_end)
 
+    # Actual
     act = history_df[[col_date, col_sales]].copy()
     act["Month"] = pd.to_datetime(act[col_date]).dt.to_period("M").dt.to_timestamp()
     act_monthly = (
@@ -195,6 +191,7 @@ def plot_monthly_total(
         & (act_monthly["Month"] <= date_range_end)
     ].sort_values("Month")
 
+    # Forecast
     fc = final_forecast[["Forecast Date", "Forecast"]].copy()
     fc["Month"] = pd.to_datetime(fc["Forecast Date"]).dt.to_period("M").dt.to_timestamp()
     fc_monthly = (
@@ -209,7 +206,7 @@ def plot_monthly_total(
     ].sort_values("Month")
 
     if act_monthly.empty and fc_monthly.empty:
-        st.info("Tidak ada data dalam rentang Januari 2024 – Desember 2027.")
+        st.info("Tidak ada data dalam rentang yang dipilih.")
         return
 
     split_date = act_monthly["Month"].max() if not act_monthly.empty else None
@@ -224,78 +221,51 @@ def plot_monthly_total(
 
     if split_date is not None and not fc_monthly.empty:
         fig.add_vrect(
-            x0=split_date,
-            x1=date_range_end,
+            x0=split_date, x1=date_range_end,
             fillcolor="rgba(249, 115, 22, 0.06)",
-            layer="below",
-            line_width=0,
+            layer="below", line_width=0,
         )
 
     if not act_monthly.empty:
         fig.add_trace(go.Scatter(
-            x=act_monthly["Month"],
-            y=act_monthly["Total"],
-            mode="lines+markers",
-            name="Actual",
-            fill="tozeroy",
-            fillcolor="rgba(76, 155, 232, 0.12)",
-            line=dict(color="#4C9BE8", width=2.5),
-            marker=dict(size=5, color="#4C9BE8"),
+            x=act_monthly["Month"], y=act_monthly["Total"],
+            mode="lines+markers", name="Actual",
+            fill="tozeroy", fillcolor="rgba(76, 155, 232, 0.12)",
+            line=dict(color="#4C9BE8", width=2.5), marker=dict(size=5),
             hovertemplate="<b>%{x|%b %Y}</b><br>Actual: %{y:,.0f}<extra></extra>",
         ))
 
     if not fc_monthly.empty:
         fig.add_trace(go.Scatter(
-            x=fc_monthly["Month"],
-            y=fc_monthly["Total"],
-            mode="lines+markers",
-            name="Forecast",
-            line=dict(color="#F97316", width=2.5, dash="dash"),
-            marker=dict(size=5, color="#F97316"),
+            x=fc_monthly["Month"], y=fc_monthly["Total"],
+            mode="lines+markers", name="Forecast",
+            line=dict(color="#F97316", width=2.5, dash="dash"), marker=dict(size=5),
             hovertemplate="<b>%{x|%b %Y}</b><br>Forecast: %{y:,.0f}<extra></extra>",
         ))
 
     if split_date is not None:
         fig.add_vline(
-            x=split_date,
-            line_dash="dot",
-            line_color="gray",
-            line_width=1.5,
-            annotation_text="↑ Mulai Forecast",
-            annotation_position="top right",
+            x=split_date, line_dash="dot", line_color="gray", line_width=1.5,
+            annotation_text="↑ Mulai Forecast", annotation_position="top right",
             annotation_font=dict(size=11, color="gray"),
         )
 
     fig.update_layout(
-        title=dict(
-            text="Total Penjualan Bulanan — Semua Produk "
-                 "<span style='font-size:13px;color:gray'>"
-                 "(Jan 2024 – Des 2027)</span>",
-            font=dict(size=16),
-        ),
+        title=dict(text="Total Penjualan Bulanan — Semua Produk", font=dict(size=16)),
         xaxis=dict(
-            title="Bulan",
-            tickformat="%b %Y",
-            dtick="M3",
-            tickangle=-30,
+            title="Bulan", tickformat="%b %Y", dtick="M3", tickangle=-30,
             range=[date_range_start, date_range_end + pd.DateOffset(months=1)],
-            showgrid=True,
-            gridcolor="rgba(0,0,0,0.06)",
+            showgrid=True, gridcolor="rgba(0,0,0,0.06)",
         ),
         yaxis=dict(
-            title="Total Qty / Sales",
-            showgrid=True,
-            gridcolor="rgba(0,0,0,0.06)",
-            rangemode="tozero",
+            title="Total Qty / Sales", showgrid=True,
+            gridcolor="rgba(0,0,0,0.06)", rangemode="tozero",
         ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        height=440,
-        margin=dict(t=80, b=60, l=60, r=20),
+        height=440, margin=dict(t=80, b=60, l=60, r=20),
         hovermode="x unified",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
-
     st.plotly_chart(fig, use_container_width=True)
 
     with st.expander("📋 Ringkasan per Tahun", expanded=False):
@@ -303,127 +273,263 @@ def plot_monthly_total(
             act_monthly.assign(Tipe="Actual"),
             fc_monthly.assign(Tipe="Forecast"),
         ], ignore_index=True)
-
         all_monthly["Tahun"] = all_monthly["Month"].dt.year
-
         pivot = (
-            all_monthly
-            .groupby(["Tahun", "Tipe"])["Total"]
-            .sum()
-            .unstack(fill_value=0)
-            .reset_index()
+            all_monthly.groupby(["Tahun", "Tipe"])["Total"]
+            .sum().unstack(fill_value=0).reset_index()
         )
         for col in ["Actual", "Forecast"]:
             if col not in pivot.columns:
                 pivot[col] = 0
-
         pivot["Total"]    = pivot["Actual"] + pivot["Forecast"]
         pivot["Actual"]   = pivot["Actual"].apply(lambda v: f"{v:,.0f}")
         pivot["Forecast"] = pivot["Forecast"].apply(lambda v: f"{v:,.0f}")
         pivot["Total"]    = pivot["Total"].apply(lambda v: f"{v:,.0f}")
-
         st.dataframe(pivot, use_container_width=True, hide_index=True)
 
 
-# =====================================================
+# HELPER: PARSE & NORMALIZE CSV
+
+def load_and_normalize_csv(uploaded_file) -> pd.DataFrame | None:
+    """
+    Baca CSV, deteksi separator (koma / titik koma / tab),
+    lalu normalisasi kolom ds dan y.
+    Kembalikan None jika gagal.
+    """
+    try:
+        raw_bytes = uploaded_file.read()
+        uploaded_file.seek(0)  # reset pointer
+
+        # Coba deteksi separator
+        sample = raw_bytes[:4096].decode("utf-8", errors="replace")
+        sep = ","
+        if sample.count(";") > sample.count(","):
+            sep = ";"
+        elif sample.count("\t") > sample.count(","):
+            sep = "\t"
+
+        df = pd.read_csv(io.BytesIO(raw_bytes), sep=sep)
+        return df
+
+    except Exception as e:
+        st.error(f"❌ Gagal membaca CSV: {e}")
+        return None
+
+
+def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Pastikan DataFrame memiliki kolom 'ds' (datetime) dan 'y' (numerik).
+    Deteksi otomatis dari kolom yang ada jika belum bernama ds/y.
+    """
+    df = df.copy()
+    cols_lower = {c.lower(): c for c in df.columns}
+
+    # Kolom tanggal → ds
+    if "ds" not in cols_lower:
+        date_candidates = [
+            "date", "period", "bulan", "month", "tanggal",
+            "time", "week", "year_month",
+        ]
+        found_date = None
+        for cand in date_candidates:
+            if cand in cols_lower:
+                found_date = cols_lower[cand]
+                break
+        # Fallback: kolom datetime pertama
+        if found_date is None:
+            for c in df.columns:
+                try:
+                    pd.to_datetime(df[c])
+                    found_date = c
+                    break
+                except Exception:
+                    pass
+        # Fallback terakhir: kolom pertama
+        if found_date is None:
+            found_date = df.columns[0]
+
+        df = df.rename(columns={found_date: "ds"})
+    else:
+        df = df.rename(columns={cols_lower["ds"]: "ds"})
+
+    df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
+
+    # Kolom sales → y
+    cols_lower2 = {c.lower(): c for c in df.columns}
+    if "y" not in cols_lower2:
+        sales_candidates = [
+            "sales", "qty", "quantity", "penjualan",
+            "volume", "amount", "nilai", "demand", "units",
+        ]
+        found_sales = None
+        for cand in sales_candidates:
+            if cand in cols_lower2:
+                found_sales = cols_lower2[cand]
+                break
+        if found_sales is None:
+            skip = {"ds", "model", "kyb no", "category", "method"}
+            for c in df.columns:
+                if c.lower() in skip:
+                    continue
+                if pd.api.types.is_numeric_dtype(df[c]):
+                    found_sales = c
+                    break
+        if found_sales is None:
+            found_sales = df.columns[-1]
+
+        df = df.rename(columns={found_sales: "y"})
+    else:
+        df = df.rename(columns={cols_lower2["y"]: "y"})
+
+    df["y"] = pd.to_numeric(df["y"], errors="coerce").fillna(0)
+
+    return df
+
+
 # HOME PAGE
-# =====================================================
 
 def home():
-    st.title("📈 Sales Forecasting Dashboard")
-
     st.markdown("""
-    ### Welcome
+    <div class="main-header">
+        <h1>📈 Sales Forecasting Dashboard</h1>
+        <p>Analisis dan prediksi penjualan produk berbasis machine learning</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    Aplikasi ini digunakan untuk melakukan analisis dan forecasting
-    penjualan produk berdasarkan data historical.
+    col_a, col_b = st.columns(2)
 
-    ### Fitur Aplikasi
+    with col_a:
+        st.markdown("""
+        <div class="card">
+            <div class="card-title">📊 Data Analysis</div>
+            <ul>
+                <li>Upload dataset CSV penjualan</li>
+                <li>Preview & Exploratory Data Analysis (EDA)</li>
+                <li>Analisis tren penjualan</li>
+                <li>Klasifikasi produk: Stable, Declining, Volatile, Intermittent, Discontinued</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
-    #### 1. Data Analysis
-    - Upload dataset penjualan
-    - Melihat preview data
-    - Exploratory Data Analysis (EDA)
-    - Analisis tren penjualan
-    - Klasifikasi produk menjadi:
-        - Stable
-        - Declining
-        - Volatile
-        - Intermittent
-        - Discontinued
+        st.markdown("""
+        <div class="card">
+            <div class="card-title">🔮 Forecasting</div>
+            <ul>
+                <li>XGBoost, LightGBM, CatBoost</li>
+                <li>Random Forest, Extra Trees, Gradient Boosting</li>
+                <li>ElasticNet, Prophet, BiLSTM</li>
+            </ul>
+            <p style="color:#64748b;font-size:0.88rem;margin-top:0.5rem">
+            Model direkomendasikan sesuai karakteristik produk.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    #### 2. Forecasting
-    Melakukan prediksi penjualan produk menggunakan berbagai metode:
-    - XGBoost
-    - LightGBM
-    - CatBoost
-    - Random Forest
-    - Extra Trees
-    - Gradient Boosting
-    - ElasticNet
-    - Prophet
-    - BiLSTM
+    with col_b:
+        st.markdown("""
+        <div class="card">
+            <div class="card-title">📐 MAPE Analysis</div>
+            <ul>
+                <li>Evaluasi akurasi forecast per produk</li>
+                <li>Grafik Forecast vs Actual per item</li>
+                <li>Ringkasan akurasi keseluruhan</li>
+                <li>Export hasil ke CSV</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
-    Model yang direkomendasikan akan menyesuaikan karakteristik produk.
+        st.markdown("""
+        <div class="card">
+            <div class="card-title">📄 Format CSV yang Didukung</div>
+            <p>Kolom minimal yang diperlukan:</p>
+            <ul>
+                <li><code>ds</code> atau <code>date/tanggal/bulan</code> — kolom tanggal</li>
+                <li><code>y</code> atau <code>sales/qty/penjualan</code> — kolom nilai</li>
+                <li><code>Model</code> — nama/kode produk (opsional, jika multi-produk)</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
-    #### 3. MAPE Analysis
-    - Evaluasi akurasi forecast per produk
-    - Grafik perbandingan Forecast vs Actual per item
-    - Ringkasan akurasi keseluruhan
-    """)
-
-    st.info("Silakan gunakan menu sidebar untuk berpindah halaman.")
+    st.info("📌 Gunakan menu sidebar untuk berpindah halaman.")
 
 
-# =====================================================
-# FORECAST PAGE
-# =====================================================
+# FORECAST PAGE  (FIXED)
 
 def forecasting_page():
-    st.title("🔮 Multi Product Forecasting")
+    st.markdown("""
+    <div class="main-header">
+        <h1>🔮 Multi-Product Forecasting</h1>
+        <p>Upload CSV → Pilih model → Generate forecast</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # ── FIX: Gunakan key unik "forecast_uploader" agar tidak bentrok
-    #    dengan widget lain (mis. file_uploader di show_eda) ──────────
+    # Upload CSV
     uploaded_file = st.file_uploader(
-        "Upload Dataset",
-        type=["xlsx", "csv"],
+        "Upload Dataset (CSV)",
+        type=["csv"],
         key="forecast_uploader",
+        help="File CSV dengan kolom tanggal dan kolom penjualan/qty.",
     )
 
     if uploaded_file is None:
-        st.info("Upload dataset terlebih dahulu")
+        st.info("📂 Upload file CSV terlebih dahulu untuk memulai.")
+
+        with st.expander("📋 Contoh format CSV", expanded=True):
+            st.markdown("""
+**Format 1 — Single product:**
+```
+ds,y
+2022-01-01,150
+2022-02-01,170
+2022-03-01,140
+```
+
+**Format 2 — Multi product:**
+```
+ds,Model,KYB No,y
+2022-01-01,ProductA,KB001,150
+2022-01-01,ProductB,KB002,200
+2022-02-01,ProductA,KB001,170
+```
+""")
         return
 
-    # ── Validasi file ─────────────────────────────────────────────────
+    # Validasi upload
     ok, err_msg = validate_upload(uploaded_file)
     if not ok:
         st.error(f"❌ File ditolak: {err_msg}")
         audit_log("UPLOAD_REJECTED", err_msg)
         return
 
-    # ── Load data ─────────────────────────────────────────────────────
-    try:
-        if uploaded_file.name.endswith(".xlsx"):
-            raw_df = pd.read_excel(uploaded_file)
-        else:
-            raw_df = pd.read_csv(uploaded_file)
-    except Exception as e:
-        st.error(f"❌ Gagal membaca file: {e}")
-        audit_log("READ_ERROR", str(e))
+    # Baca CSV
+    raw_df = load_and_normalize_csv(uploaded_file)
+    if raw_df is None:
         return
 
-    # ── Validasi DataFrame ────────────────────────────────────────────
+    # Validasi DataFrame
     ok_df, err_df = validate_dataframe(raw_df)
     if not ok_df:
         st.error(f"❌ Data ditolak: {err_df}")
         audit_log("DATA_REJECTED", err_df)
         return
 
-    # ── Sanitasi PII sebelum diproses ─────────────────────────────────
     raw_df = drop_pii_columns(raw_df)
     audit_log("UPLOAD_OK", f"rows={len(raw_df)} cols={len(raw_df.columns)}")
 
-    # ── Preprocessing ─────────────────────────────────────────────────
+    # Normalisasi kolom ds / y
+    try:
+        raw_df = normalize_to_ds_y(raw_df)
+    except Exception as e:
+        st.error(f"❌ Gagal normalisasi kolom: {e}")
+        return
+
+    # Info kolom
+    with st.expander("🔍 Pratinjau Data & Kolom Terdeteksi", expanded=False):
+        st.write(f"**Kolom dalam file:** {raw_df.columns.tolist()}")
+        st.write(f"**Jumlah baris:** {len(raw_df):,}")
+        st.dataframe(raw_df.head(10), use_container_width=True)
+
+    # Preprocessing
     try:
         df = preprocess_data(raw_df)
     except Exception as e:
@@ -431,13 +537,28 @@ def forecasting_page():
         audit_log("PREPROCESS_ERROR", str(e))
         return
 
-    # ── Deteksi kolom ─────────────────────────────────────────────────
-    col_date, col_sales = detect_columns(df)
+    # Pastikan kolom ds & y tersedia setelah preprocessing
+    if "ds" not in df.columns or "y" not in df.columns:
+        st.error(
+            "❌ Setelah preprocessing, kolom `ds` atau `y` tidak ditemukan. "
+            f"Kolom tersedia: {df.columns.tolist()}"
+        )
+        return
+
+    # Deteksi kolom untuk tampilan
+    col_date  = "ds"
+    col_sales = "y"
     st.session_state["col_date"]   = col_date
     st.session_state["col_sales"]  = col_sales
     st.session_state["history_df"] = df
 
-    # ── Klasifikasi ───────────────────────────────────────────────────
+    # Pastikan kolom Model ada
+    if "Model" not in df.columns:
+        # Beri nama default jika single-product
+        df["Model"] = "Product"
+        st.session_state["history_df"] = df
+
+    # Klasifikasi
     try:
         classify_df = classify_items(df)
     except Exception as e:
@@ -446,26 +567,33 @@ def forecasting_page():
         return
 
     if classify_df.empty:
-        st.warning("⚠️ Tidak ada produk yang dapat diklasifikasi. Periksa format data.")
+        st.warning(
+            "⚠️ Tidak ada produk yang dapat diklasifikasi. "
+            "Pastikan kolom `ds` bertipe tanggal dan `y` bertipe numerik."
+        )
         return
 
-    st.success(f"✅ {len(classify_df)} produk terdeteksi. Pilih model lalu klik Generate Forecast.")
+    st.success(f"✅ **{len(classify_df)} produk** terdeteksi. Pilih model lalu klik Generate Forecast.")
 
-    st.subheader("Model Selection Per Product")
+    # Pilih model per produk
+    st.subheader("🎛️ Pilih Model per Produk")
 
     selected_models: dict[str, str] = {}
+    cols_header = st.columns([3, 2, 3])
+    cols_header[0].markdown("**Produk**")
+    cols_header[1].markdown("**Kategori**")
+    cols_header[2].markdown("**Model**")
+    st.divider()
 
     for _, row in classify_df.iterrows():
         model_name      = row["Model"]
-        category        = row["Category"]
+        category        = row.get("Category", "Stable")
         recommendations = RECOMMENDED_MODELS.get(category, ["Random Forest"])
 
-        col1, col2, col3 = st.columns([3, 2, 3])
-        with col1:
-            st.write(f"**{model_name}**")
-        with col2:
-            st.write(category)
-        with col3:
+        c1, c2, c3 = st.columns([3, 2, 3])
+        c1.write(f"**{model_name}**")
+        c2.write(f"`{category}`")
+        with c3:
             selected_models[model_name] = st.selectbox(
                 "Model",
                 recommendations,
@@ -474,44 +602,66 @@ def forecasting_page():
             )
 
     st.divider()
+    periods = st.slider("📅 Forecast Horizon (Bulan)", 1, 36, 12, key="fc_periods")
 
-    periods = st.slider("Forecast Horizon (Month)", 1, 36, 12, key="fc_periods")
+    # Generate Forecast
+    if st.button("🚀 Generate Forecast Semua Produk", key="btn_generate", type="primary"):
 
-    # ── Generate Forecast ─────────────────────────────────────────────
-    if st.button("Generate Forecast Semua Produk", key="btn_generate"):
-
-        progress = st.progress(0)
+        progress_bar  = st.progress(0, text="Memulai proses forecasting...")
+        status_placeholder = st.empty()
         results  = []
         products = classify_df["Model"].tolist()
 
         for i, product in enumerate(products):
+            status_placeholder.info(f"⏳ Memproses **{product}** ({i+1}/{len(products)})…")
+
             item_df = df[df["Model"] == product].copy()
-            method  = selected_models[product]
+            method  = selected_models.get(product, "Random Forest")
+
+            # Pastikan item_df punya ds & y
+            if "ds" not in item_df.columns or "y" not in item_df.columns:
+                st.warning(f"⚠️ Lewati {product}: kolom ds/y tidak ditemukan.")
+                progress_bar.progress((i + 1) / len(products))
+                continue
+
+            if len(item_df) < 5:
+                st.warning(f"⚠️ Lewati {product}: data terlalu sedikit ({len(item_df)} baris).")
+                progress_bar.progress((i + 1) / len(products))
+                continue
 
             try:
                 forecast = forecast_item(item_df, method, periods)
-                mape     = evaluate_model(item_df, method, test_period=12)
             except Exception as e:
-                st.warning(f"⚠️ Gagal forecast {product}: {e}")
-                progress.progress((i + 1) / len(products))
+                st.warning(f"⚠️ Gagal forecast **{product}**: {e}")
+                progress_bar.progress((i + 1) / len(products))
                 continue
 
-            if not forecast.empty:
-                forecast["Model"]    = product
-                forecast["KYB No"]   = item_df["KYB No"].iloc[0]
-                forecast["Category"] = (
-                    classify_df.loc[
-                        classify_df["Model"] == product, "Category"
-                    ].values[0]
-                )
-                forecast["Method"] = method
-                forecast["MAPE"]   = mape
-                results.append(forecast)
+            if forecast is None or forecast.empty:
+                st.warning(f"⚠️ Forecast kosong untuk **{product}**.")
+                progress_bar.progress((i + 1) / len(products))
+                continue
 
-            progress.progress((i + 1) / len(products))
+            try:
+                mape = evaluate_model(item_df, method, test_period=min(12, len(item_df) // 3))
+            except Exception:
+                mape = np.nan
+
+            forecast["Model"]    = product
+            forecast["KYB No"]   = item_df["KYB No"].iloc[0] if "KYB No" in item_df.columns else "-"
+            forecast["Category"] = (
+                classify_df.loc[classify_df["Model"] == product, "Category"].values[0]
+                if "Category" in classify_df.columns else "Unknown"
+            )
+            forecast["Method"] = method
+            forecast["MAPE"]   = mape if mape is not None else np.nan
+            results.append(forecast)
+
+            progress_bar.progress((i + 1) / len(products), text=f"Selesai: {product}")
+
+        status_placeholder.empty()
 
         if not results:
-            st.error("Tidak ada hasil forecast. Periksa data atau model yang dipilih.")
+            st.error("❌ Tidak ada hasil forecast. Periksa format data atau pilih model lain.")
             return
 
         final_forecast = pd.concat(results, ignore_index=True)
@@ -522,17 +672,20 @@ def forecasting_page():
             f"products={final_forecast['Model'].nunique()} rows={len(final_forecast)}",
         )
 
-        # ── Preview ───────────────────────────────────────────────────
-        st.subheader("Forecast Result")
+        st.success(f"✅ Forecast berhasil untuk **{final_forecast['Model'].nunique()}** produk!")
+
+        # Preview tabel
+        st.subheader("📋 Hasil Forecast")
         safe_dataframe_display(final_forecast, use_container_width=True)
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Product",        final_forecast["Model"].nunique())
+        c1.metric("Total Produk",        final_forecast["Model"].nunique())
         c2.metric("Total Forecast Sales", f"{final_forecast['Forecast'].sum():,.0f}")
-        c3.metric("Total Rows",           len(final_forecast))
+        c3.metric("Total Baris",          len(final_forecast))
 
         st.divider()
 
+        # Grafik total bulanan
         plot_monthly_total(
             history_df=df,
             final_forecast=final_forecast,
@@ -542,83 +695,69 @@ def forecasting_page():
 
         st.divider()
 
-        # ── Grafik per produk ─────────────────────────────────────────
+        # Grafik per produk
         st.subheader("📊 Grafik Forecast vs Actual per Produk")
 
-        fc_date_col = "Forecast Date"
-        fc_val_col  = "Forecast"
-
-        with st.expander("ℹ️ Info Kolom yang Terdeteksi", expanded=False):
-            st.write(f"**Kolom Tanggal (historis):** `{col_date}`")
-            st.write(f"**Kolom Sales (historis):** `{col_sales}`")
-            st.write(f"**Kolom Forecast:** `{fc_val_col}`")
-            st.write(f"**Kolom Tanggal (forecast):** `{fc_date_col}`")
-            st.write("**Semua kolom df:**",           df.columns.tolist())
-            st.write("**Semua kolom forecast:**", final_forecast.columns.tolist())
-
         for product in final_forecast["Model"].unique():
-            act_raw = df[df["Model"] == product][[col_date, col_sales]].copy()
-            act_raw = act_raw.rename(columns={col_date: "Date", col_sales: "Nilai"})
-            act_raw["Date"] = pd.to_datetime(act_raw["Date"])
+            act_raw = df[df["Model"] == product][["ds", "y"]].copy()
+            act_raw["ds"] = pd.to_datetime(act_raw["ds"])
 
             fc_raw = final_forecast[final_forecast["Model"] == product][
-                [fc_date_col, fc_val_col]
+                ["Forecast Date", "Forecast"]
             ].copy()
-            fc_raw = fc_raw.rename(columns={fc_date_col: "Date", fc_val_col: "Nilai"})
-            fc_raw["Date"] = pd.to_datetime(fc_raw["Date"])
+            fc_raw["Forecast Date"] = pd.to_datetime(fc_raw["Forecast Date"])
 
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                x=act_raw["Date"], y=act_raw["Nilai"],
+                x=act_raw["ds"], y=act_raw["y"],
                 mode="lines+markers", name="Actual",
                 line=dict(color="#4C9BE8", width=2), marker=dict(size=4),
+                hovertemplate="<b>%{x|%b %Y}</b><br>Actual: %{y:,.0f}<extra></extra>",
             ))
             fig.add_trace(go.Scatter(
-                x=fc_raw["Date"], y=fc_raw["Nilai"],
+                x=fc_raw["Forecast Date"], y=fc_raw["Forecast"],
                 mode="lines+markers", name="Forecast",
                 line=dict(color="#F97316", width=2, dash="dash"), marker=dict(size=4),
+                hovertemplate="<b>%{x|%b %Y}</b><br>Forecast: %{y:,.0f}<extra></extra>",
             ))
-
             if not act_raw.empty and not fc_raw.empty:
                 fig.add_vline(
-                    x=act_raw["Date"].max(),
+                    x=act_raw["ds"].max(),
                     line_dash="dot", line_color="gray",
                     annotation_text="Forecast Start",
                     annotation_position="top right",
                 )
-
             fig.update_layout(
-                title=f"{product}",
-                xaxis_title="Tanggal",
-                yaxis_title=col_sales,
+                title=f"📦 {product}",
+                xaxis_title="Tanggal", yaxis_title="Sales / Qty",
                 legend=dict(orientation="h", y=1.12),
-                height=350,
-                margin=dict(t=60, b=40, l=40, r=20),
+                height=350, margin=dict(t=60, b=40, l=40, r=20),
                 hovermode="x unified",
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(fig, use_container_width=True)
 
-        # ── Export Excel ──────────────────────────────────────────────
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            final_forecast.to_excel(writer, index=False, sheet_name="Forecast")
-        output.seek(0)
-
+        # Export CSV
+        st.divider()
+        csv_bytes = final_forecast.to_csv(index=False).encode("utf-8")
         secure_download_button(
-            label="📥 Download Forecast Excel",
-            data=output,
-            file_name="forecast_all_products.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            label="📥 Download Forecast (CSV)",
+            data=csv_bytes,
+            file_name="forecast_all_products.csv",
+            mime="text/csv",
             action_name="EXPORT_FORECAST",
         )
 
 
-# =====================================================
 # MAPE PAGE
-# =====================================================
 
 def mape_page():
-    st.title("📐 MAPE Analysis — Akurasi Forecast")
+    st.markdown("""
+    <div class="main-header">
+        <h1>📐 MAPE Analysis</h1>
+        <p>Evaluasi akurasi forecast per produk</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     final_forecast: pd.DataFrame | None = st.session_state.get("final_forecast")
     history_df:     pd.DataFrame | None = st.session_state.get("history_df")
@@ -627,38 +766,40 @@ def mape_page():
 
     if final_forecast is None or history_df is None:
         st.warning(
-            "Belum ada hasil forecast. "
+            "⚠️ Belum ada hasil forecast. "
             "Silakan jalankan forecasting terlebih dahulu di halaman **Forecast**."
         )
         return
 
-    if col_date is None or col_sales is None:
-        col_date, col_sales = detect_columns(history_df)
+    if col_date is None:
+        col_date = "ds"
+    if col_sales is None:
+        col_sales = "y"
 
     fc_date_col = "Forecast Date"
     fc_val_col  = "Forecast"
 
+    # Susun tabel MAPE
     mape_rows = []
-
     for product in final_forecast["Model"].unique():
         fc       = final_forecast[final_forecast["Model"] == product]
         mape_val = fc["MAPE"].iloc[0]
-        category = fc["Category"].iloc[0]
-        method   = fc["Method"].iloc[0]
+        category = fc["Category"].iloc[0] if "Category" in fc.columns else "-"
+        method   = fc["Method"].iloc[0]   if "Method"   in fc.columns else "-"
 
         mape_rows.append({
             "Produk"  : product,
             "Kategori": category,
             "Metode"  : method,
-            "MAPE (%)": round(mape_val, 2) if pd.notna(mape_val) else np.nan,
+            "MAPE (%)": round(float(mape_val), 2) if pd.notna(mape_val) else np.nan,
             "Akurasi" : get_mape_label(mape_val) if pd.notna(mape_val) else "N/A",
-            ""        : mape_color(mape_val)      if pd.notna(mape_val) else "⚪",
+            "Status"  : mape_color(mape_val)      if pd.notna(mape_val) else "⚪",
         })
 
     mape_df = pd.DataFrame(mape_rows)
+    valid   = mape_df["MAPE (%)"].dropna()
 
-    valid = mape_df["MAPE (%)"].dropna()
-
+    # Ringkasan
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Rata-rata MAPE",    f"{valid.mean():.2f} %" if len(valid) else "N/A")
     c2.metric("MAPE Terbaik",      f"{valid.min():.2f} %"  if len(valid) else "N/A")
@@ -667,24 +808,25 @@ def mape_page():
 
     st.divider()
 
-    st.subheader("Tabel MAPE per Produk")
+    # Tabel
+    st.subheader("📋 Tabel MAPE per Produk")
     safe_dataframe_display(
         mape_df,
         use_container_width=True,
         column_config={
             "MAPE (%)": st.column_config.NumberColumn("MAPE (%)", format="%.2f %%"),
-            "":         st.column_config.TextColumn("Status", width="small"),
+            "Status":   st.column_config.TextColumn("Status", width="small"),
         },
     )
 
     st.divider()
 
+    # Bar Chart
     st.subheader("📊 Bar Chart MAPE per Produk")
-
     plot_df = mape_df.dropna(subset=["MAPE (%)"]).sort_values("MAPE (%)", ascending=True)
 
     if plot_df.empty:
-        st.info("Tidak ada data untuk menghitung MAPE.")
+        st.info("Tidak ada data MAPE untuk ditampilkan.")
     else:
         color_map = {
             "Sangat Baik": "#22c55e",
@@ -693,7 +835,7 @@ def mape_page():
             "Kurang":      "#ef4444",
         }
         plot_df = plot_df.copy()
-        plot_df["_color"] = plot_df["Akurasi"].map(color_map)
+        plot_df["_color"] = plot_df["Akurasi"].map(color_map).fillna("#94a3b8")
 
         fig_bar = go.Figure(go.Bar(
             x=plot_df["MAPE (%)"],
@@ -705,18 +847,18 @@ def mape_page():
             hovertemplate="<b>%{y}</b><br>MAPE: %{x:.2f}%<extra></extra>",
         ))
         fig_bar.update_layout(
-            xaxis_title="MAPE (%)",
-            yaxis_title="",
+            xaxis_title="MAPE (%)", yaxis_title="",
             height=max(300, len(plot_df) * 38),
             margin=dict(t=20, b=40, l=10, r=60),
-            xaxis=dict(range=[0, plot_df["MAPE (%)"].max() * 1.25]),
+            xaxis=dict(range=[0, plot_df["MAPE (%)"].max() * 1.3]),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
     st.divider()
 
+    # Grafik per produk
     st.subheader("📈 Forecast vs Actual per Produk")
-
     selected_product = st.selectbox(
         "Pilih Produk",
         final_forecast["Model"].unique().tolist(),
@@ -737,36 +879,23 @@ def mape_page():
             x=act["_date_"], y=act[col_sales],
             mode="lines+markers", name="Actual",
             line=dict(color="#4C9BE8", width=2.5), marker=dict(size=5),
+            hovertemplate="<b>%{x|%b %Y}</b><br>Actual: %{y:,.0f}<extra></extra>",
         ))
         fig2.add_trace(go.Scatter(
             x=fc["_date_"], y=fc[fc_val_col],
             mode="lines+markers", name="Forecast",
             line=dict(color="#F97316", width=2.5, dash="dash"), marker=dict(size=5),
+            hovertemplate="<b>%{x|%b %Y}</b><br>Forecast: %{y:,.0f}<extra></extra>",
         ))
-
         if not act.empty:
             fig2.add_vline(
-                x=act["_date_"].max(),
-                line_dash="dot", line_color="gray",
-                annotation_text="Forecast Start",
-                annotation_position="top right",
+                x=act["_date_"].max(), line_dash="dot", line_color="gray",
+                annotation_text="Forecast Start", annotation_position="top right",
             )
-
-        merged2 = fc.merge(act[["_date_", col_sales]], on="_date_", how="inner")
-        if not merged2.empty:
-            fig2.add_trace(go.Scatter(
-                x=merged2["_date_"], y=merged2[col_sales],
-                mode="markers", name="Actual (overlap)",
-                marker=dict(
-                    color="#4C9BE8", size=8, symbol="circle-open",
-                    line=dict(width=2, color="#4C9BE8"),
-                ),
-            ))
 
         row_mape = mape_df[mape_df["Produk"] == selected_product]
         mape_val = row_mape["MAPE (%)"].values[0] if not row_mape.empty else np.nan
         akurasi  = row_mape["Akurasi"].values[0]  if not row_mape.empty else "N/A"
-
         subtitle = (
             f"MAPE: {mape_val:.2f}% — {akurasi}"
             if pd.notna(mape_val)
@@ -778,57 +907,46 @@ def mape_page():
                 text=f"{selected_product}<br>"
                      f"<sup style='color:gray'>{subtitle}</sup>",
             ),
-            xaxis_title="Tanggal",
-            yaxis_title=col_sales,
+            xaxis_title="Tanggal", yaxis_title="Sales / Qty",
             legend=dict(orientation="h", y=1.15),
-            height=420,
-            margin=dict(t=80, b=40, l=40, r=20),
+            height=420, margin=dict(t=80, b=40, l=40, r=20),
             hovermode="x unified",
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(fig2, use_container_width=True)
 
     st.divider()
 
-    export_df = mape_df.drop(columns=["_color", ""], errors="ignore")
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        export_df.to_excel(writer, index=False, sheet_name="MAPE")
-    output.seek(0)
-
+    # ── Export CSV ────────────────────────────────────────────────────
+    export_df  = mape_df.drop(columns=["_color", "Status"], errors="ignore")
+    csv_bytes  = export_df.to_csv(index=False).encode("utf-8")
     secure_download_button(
-        label="📥 Download MAPE Excel",
-        data=output,
-        file_name="mape_analysis.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        label="📥 Download MAPE (CSV)",
+        data=csv_bytes,
+        file_name="mape_analysis.csv",
+        mime="text/csv",
         action_name="EXPORT_MAPE",
     )
 
 
-# =====================================================
 # SIDEBAR NAVIGATION
-# =====================================================
 
-st.sidebar.title("Navigation")
+st.sidebar.title("📈 Navigation")
 
 page = st.sidebar.radio(
-    "Choose Page",
+    "Pilih Halaman",
     ["Home", "Data Analysis", "Forecast", "MAPE Analysis"],
 )
 
 render_security_sidebar()
 
-# =====================================================
 # ROUTER
-# =====================================================
 
 if page == "Home":
     home()
-
 elif page == "Data Analysis":
     show_eda()
-
 elif page == "Forecast":
     forecasting_page()
-
 elif page == "MAPE Analysis":
     mape_page()
