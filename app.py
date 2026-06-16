@@ -23,7 +23,9 @@ from utils.security import (
     audit_log,
 )
 
+# =====================================================
 # PAGE CONFIG
+# =====================================================
 
 st.set_page_config(
     page_title="Sales Forecasting Dashboard",
@@ -31,7 +33,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# CSS Styling
+# ── CSS Styling ──────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     .main-header {
@@ -66,7 +68,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# =====================================================
 # SECURITY INIT
+# =====================================================
 
 init_session()
 
@@ -76,14 +80,18 @@ if check_session_expiry():
 
 enforce_state_whitelist()
 
+# =====================================================
 # SESSION STATE INIT
+# =====================================================
 
 for key in ["final_forecast", "history_df", "col_date", "col_sales"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
 
+# =====================================================
 # HELPER: AUTO-DETECT COLUMN NAMES
+# =====================================================
 
 def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     """Deteksi otomatis kolom tanggal dan kolom sales."""
@@ -131,7 +139,9 @@ def detect_columns(df: pd.DataFrame) -> tuple[str, str]:
     return col_date, col_sales
 
 
+# =====================================================
 # HELPER: MAPE
+# =====================================================
 
 def calculate_mape(actual: pd.Series, predicted: pd.Series) -> float:
     mask = actual != 0
@@ -162,7 +172,9 @@ def mape_color(mape: float) -> str:
     }[get_mape_label(mape)]
 
 
+# =====================================================
 # HELPER: GRAFIK TOTAL BULANAN
+# =====================================================
 
 def plot_monthly_total(
     history_df: pd.DataFrame,
@@ -288,7 +300,9 @@ def plot_monthly_total(
         st.dataframe(pivot, use_container_width=True, hide_index=True)
 
 
+# =====================================================
 # HELPER: PARSE & NORMALIZE CSV
+# =====================================================
 
 def load_and_normalize_csv(uploaded_file) -> pd.DataFrame | None:
     """
@@ -324,7 +338,7 @@ def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     cols_lower = {c.lower(): c for c in df.columns}
 
-    # Kolom tanggal → ds
+    # ── Kolom tanggal → ds ────────────────────────────────────────────
     if "ds" not in cols_lower:
         date_candidates = [
             "date", "period", "bulan", "month", "tanggal",
@@ -354,7 +368,7 @@ def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
 
     df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
 
-    # Kolom sales → y
+    # ── Kolom sales → y ───────────────────────────────────────────────
     cols_lower2 = {c.lower(): c for c in df.columns}
     if "y" not in cols_lower2:
         sales_candidates = [
@@ -386,7 +400,9 @@ def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# =====================================================
 # HOME PAGE
+# =====================================================
 
 def home():
     st.markdown("""
@@ -453,7 +469,9 @@ def home():
     st.info("📌 Gunakan menu sidebar untuk berpindah halaman.")
 
 
+# =====================================================
 # FORECAST PAGE  (FIXED)
+# =====================================================
 
 def forecasting_page():
     st.markdown("""
@@ -463,7 +481,7 @@ def forecasting_page():
     </div>
     """, unsafe_allow_html=True)
 
-    # Upload CSV
+    # ── Upload CSV ────────────────────────────────────────────────────
     uploaded_file = st.file_uploader(
         "Upload Dataset (CSV)",
         type=["csv"],
@@ -494,19 +512,19 @@ ds,Model,KYB No,y
 """)
         return
 
-    # Validasi upload
+    # ── Validasi upload ───────────────────────────────────────────────
     ok, err_msg = validate_upload(uploaded_file)
     if not ok:
         st.error(f"❌ File ditolak: {err_msg}")
         audit_log("UPLOAD_REJECTED", err_msg)
         return
 
-    # Baca CSV
+    # ── Baca CSV ──────────────────────────────────────────────────────
     raw_df = load_and_normalize_csv(uploaded_file)
     if raw_df is None:
         return
 
-    # Validasi DataFrame
+    # ── Validasi DataFrame ────────────────────────────────────────────
     ok_df, err_df = validate_dataframe(raw_df)
     if not ok_df:
         st.error(f"❌ Data ditolak: {err_df}")
@@ -516,20 +534,20 @@ ds,Model,KYB No,y
     raw_df = drop_pii_columns(raw_df)
     audit_log("UPLOAD_OK", f"rows={len(raw_df)} cols={len(raw_df.columns)}")
 
-    # Normalisasi kolom ds / y
+    # ── Normalisasi kolom ds / y ──────────────────────────────────────
     try:
         raw_df = normalize_to_ds_y(raw_df)
     except Exception as e:
         st.error(f"❌ Gagal normalisasi kolom: {e}")
         return
 
-    # Info kolom
+    # ── Info kolom ────────────────────────────────────────────────────
     with st.expander("🔍 Pratinjau Data & Kolom Terdeteksi", expanded=False):
         st.write(f"**Kolom dalam file:** {raw_df.columns.tolist()}")
         st.write(f"**Jumlah baris:** {len(raw_df):,}")
         st.dataframe(raw_df.head(10), use_container_width=True)
 
-    # Preprocessing
+    # ── Preprocessing ─────────────────────────────────────────────────
     try:
         df = preprocess_data(raw_df)
     except Exception as e:
@@ -537,7 +555,7 @@ ds,Model,KYB No,y
         audit_log("PREPROCESS_ERROR", str(e))
         return
 
-    # Pastikan kolom ds & y tersedia setelah preprocessing
+    # ── Pastikan kolom ds & y tersedia setelah preprocessing ──────────
     if "ds" not in df.columns or "y" not in df.columns:
         st.error(
             "❌ Setelah preprocessing, kolom `ds` atau `y` tidak ditemukan. "
@@ -545,20 +563,20 @@ ds,Model,KYB No,y
         )
         return
 
-    # Deteksi kolom untuk tampilan
+    # ── Deteksi kolom untuk tampilan ──────────────────────────────────
     col_date  = "ds"
     col_sales = "y"
     st.session_state["col_date"]   = col_date
     st.session_state["col_sales"]  = col_sales
     st.session_state["history_df"] = df
 
-    # Pastikan kolom Model ada
+    # ── Pastikan kolom Model ada ──────────────────────────────────────
     if "Model" not in df.columns:
         # Beri nama default jika single-product
         df["Model"] = "Product"
         st.session_state["history_df"] = df
 
-    # Klasifikasi
+    # ── Klasifikasi ───────────────────────────────────────────────────
     try:
         classify_df = classify_items(df)
     except Exception as e:
@@ -575,7 +593,7 @@ ds,Model,KYB No,y
 
     st.success(f"✅ **{len(classify_df)} produk** terdeteksi. Pilih model lalu klik Generate Forecast.")
 
-    # Pilih model per produk
+    # ── Pilih model per produk ────────────────────────────────────────
     st.subheader("🎛️ Pilih Model per Produk")
 
     selected_models: dict[str, str] = {}
@@ -604,7 +622,7 @@ ds,Model,KYB No,y
     st.divider()
     periods = st.slider("📅 Forecast Horizon (Bulan)", 1, 36, 12, key="fc_periods")
 
-    # Generate Forecast
+    # ── Generate Forecast ─────────────────────────────────────────────
     if st.button("🚀 Generate Forecast Semua Produk", key="btn_generate", type="primary"):
 
         progress_bar  = st.progress(0, text="Memulai proses forecasting...")
@@ -674,7 +692,7 @@ ds,Model,KYB No,y
 
         st.success(f"✅ Forecast berhasil untuk **{final_forecast['Model'].nunique()}** produk!")
 
-        # Preview tabel
+        # ── Preview tabel ─────────────────────────────────────────────
         st.subheader("📋 Hasil Forecast")
         safe_dataframe_display(final_forecast, use_container_width=True)
 
@@ -685,7 +703,7 @@ ds,Model,KYB No,y
 
         st.divider()
 
-        # Grafik total bulanan
+        # ── Grafik total bulanan ──────────────────────────────────────
         plot_monthly_total(
             history_df=df,
             final_forecast=final_forecast,
@@ -695,7 +713,7 @@ ds,Model,KYB No,y
 
         st.divider()
 
-        # Grafik per produk
+        # ── Grafik per produk ─────────────────────────────────────────
         st.subheader("📊 Grafik Forecast vs Actual per Produk")
 
         for product in final_forecast["Model"].unique():
@@ -737,7 +755,7 @@ ds,Model,KYB No,y
             )
             st.plotly_chart(fig, use_container_width=True)
 
-        # Export CSV
+        # ── Export CSV ────────────────────────────────────────────────
         st.divider()
         csv_bytes = final_forecast.to_csv(index=False).encode("utf-8")
         secure_download_button(
@@ -749,7 +767,9 @@ ds,Model,KYB No,y
         )
 
 
+# =====================================================
 # MAPE PAGE
+# =====================================================
 
 def mape_page():
     st.markdown("""
@@ -779,7 +799,7 @@ def mape_page():
     fc_date_col = "Forecast Date"
     fc_val_col  = "Forecast"
 
-    # Susun tabel MAPE
+    # ── Susun tabel MAPE ──────────────────────────────────────────────
     mape_rows = []
     for product in final_forecast["Model"].unique():
         fc       = final_forecast[final_forecast["Model"] == product]
@@ -799,7 +819,7 @@ def mape_page():
     mape_df = pd.DataFrame(mape_rows)
     valid   = mape_df["MAPE (%)"].dropna()
 
-    # Ringkasan
+    # ── Ringkasan ─────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Rata-rata MAPE",    f"{valid.mean():.2f} %" if len(valid) else "N/A")
     c2.metric("MAPE Terbaik",      f"{valid.min():.2f} %"  if len(valid) else "N/A")
@@ -808,7 +828,7 @@ def mape_page():
 
     st.divider()
 
-    # Tabel
+    # ── Tabel ─────────────────────────────────────────────────────────
     st.subheader("📋 Tabel MAPE per Produk")
     safe_dataframe_display(
         mape_df,
@@ -821,7 +841,7 @@ def mape_page():
 
     st.divider()
 
-    # Bar Chart
+    # ── Bar Chart ─────────────────────────────────────────────────────
     st.subheader("📊 Bar Chart MAPE per Produk")
     plot_df = mape_df.dropna(subset=["MAPE (%)"]).sort_values("MAPE (%)", ascending=True)
 
@@ -857,7 +877,7 @@ def mape_page():
 
     st.divider()
 
-    # Grafik per produk
+    # ── Grafik per produk ─────────────────────────────────────────────
     st.subheader("📈 Forecast vs Actual per Produk")
     selected_product = st.selectbox(
         "Pilih Produk",
@@ -939,6 +959,7 @@ page = st.sidebar.radio(
 )
 
 render_security_sidebar()
+
 
 # ROUTER
 
