@@ -366,7 +366,8 @@ def normalize_to_ds_y(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df = df.rename(columns={cols_lower["ds"]: "ds"})
 
-    df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
+    if not pd.api.types.is_datetime64_any_dtype(df["ds"]):
+        df["ds"] = df["ds"].apply(_parse_tanggal)
 
     # ── Kolom sales → y ───────────────────────────────────────────────
     cols_lower2 = {c.lower(): c for c in df.columns}
